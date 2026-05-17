@@ -1,5 +1,402 @@
+<!--
+【目的】
+- 核心理由：在 GitHub Pages top-level HTTPS 頁面驗證 html5-qrcode 是否可正常調用相機。
+- 權責邊界：[負責] 相機啟動、QRCode/條碼掃描、顯示 decodedText [不負責] GAS API、Sheets 寫入、提案單業務流程。
+- MWE：將本檔作為 index.html 部署到 GitHub Pages，開啟 HTTPS URL 後點「啟動相機」即可驗證。
+- 致命錯誤邊界：不修改共享狀態；無 Race Condition、OOM、死鎖風險；風險受控。
+-->
 <!DOCTYPE html>
-<html>
-<head><title>我的網站</title></head>
-<body><h1>哈囉！這是我的第一個網站！</h1></body>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8" />
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>GitHub Pages 相機掃碼 MWE</title>
+
+    <https://unpkg.com/html5-qrcode/html5-qrcode.min.jsscript>
+
+    <style>
+        :root {
+            --bg: #f6f8fb;
+            --card: #ffffff;
+            --ink: #111827;
+            --muted: #64748b;
+            --blue: #2563eb;
+            --green: #047857;
+            --red: #dc2626;
+            --line: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 18px;
+            line-height: 1.55;
+        }
+
+        main {
+            width: min(100%, 760px);
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .panel {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: 28px;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 15px;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 14px 0;
+        }
+
+        button {
+            min-height: 50px;
+            border: 0;
+            border-radius: 14px;
+            background: var(--blue);
+            color: #fff;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 800;
+            padding: 10px 16px;
+        }
+
+        button.secondary {
+            background: #475569;
+        }
+
+        button.danger {
+            background: var(--red);
+        }
+
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        #reader {
+            width: 100%;
+            min-height: 320px;
+            overflow: hidden;
+            border-radius: 16px;
+            background: #000;
+            border: 1px solid var(--line);
+        }
+
+        .status {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 14px;
+            background: #eff6ff;
+            color: #1e40af;
+            font-weight: 800;
+            word-break: break-word;
+        }
+
+        .status.ok {
+            background: #ecfdf5;
+            color: var(--green);
+        }
+
+        .status.error {
+            background: #fef2f2;
+            color: var(--red);
+        }
+
+        .result-box {
+            margin-top: 12px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+            word-break: break-all;
+        }
+
+        .result-label {
+            color: var(--muted);
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .result-value {
+            font-size: 22px;
+            font-weight: 900;
+            color: var(--ink);
+        }
+
+        @media (max-width: 640px) {
+            body {
+                font-size: 19px;
+            }
+
+            main {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 26px;
+            }
+
+            button {
+                width: 100%;
+                font-size: 19px;
+            }
+
+            #reader {
+                min-height: 380px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <section class="panel">
+        <h1>GitHub Pages 相機掃碼 MWE</h1>
+        <p class="muted">
+            目的：只驗證 GitHub Pages top-level HTTPS 頁面是否能正常啟動相機與讀取 QRCode / 條碼。
+        </p>
+
+        <div class="button-row">
+            <button id="startBtn" type="button">啟動相機</button>
+            <button id="stopBtn" type="button" class="secondary" disabled>停止相機</button>
+            <button id="clearBtn" type="button" class="danger">清除結果</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <div id="status" class="status">
+            尚未啟動。請用 GitHub Pages HTTPS URL 開啟本頁。
+        </div>
+
+        <div class="result-box">
+            <div class="result-label">最後掃描結果</div>
+            <div id="result" class="result-value">尚無</div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>環境檢查</h2>
+        <div id="envCheck" class="muted"></div>
+    </section>
+</main>
+
+<script>
+    let html5QrCode = null;
+    let lastScanText = "";
+    let lastScanAt = 0;
+
+    const DEBOUNCE_MS = 1500;
+
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const envCheckEl = document.getElementById("envCheck");
+
+    function setStatus(message, type) {
+        statusEl.textContent = message;
+        statusEl.className = "status";
+
+        if (type === "ok") {
+            statusEl.classList.add("ok");
+        }
+
+        if (type === "error") {
+            statusEl.classList.add("error");
+        }
+    }
+
+    function normalizeText(value) {
+        return value === null || value === undefined ? "" : String(value).trim();
+    }
+
+    function renderEnvCheck() {
+        const checks = [
+            "location.href = " + window.location.href,
+            "isSecureContext = " + String(window.isSecureContext),
+            "navigator.mediaDevices = " + String(Boolean(navigator.mediaDevices)),
+            "getUserMedia = " + String(Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)),
+            "Html5Qrcode loaded = " + String(Boolean(window.Html5Qrcode))
+        ];
+
+        envCheckEl.innerHTML = checks.map(function (x) {
+            return "<div>" + x + "</div>";
+        }).join("");
+    }
+
+    async function startScanner() {
+        try {
+            if (!window.isSecureContext) {
+                throw new Error("目前不是 Secure Context。請使用 GitHub Pages HTTPS URL 或 localhost。");
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("此瀏覽器不支援 getUserMedia。請改用 Chrome / Safari / Edge 最新版。");
+            }
+
+            if (!window.Html5Qrcode) {
+                throw new Error("html5-qrcode 尚未載入。請確認 CDN 可連線。");
+            }
+
+            if (html5QrCode !== null) {
+                setStatus("相機已啟動或正在啟動中。", "ok");
+                return;
+            }
+
+            html5QrCode = new Html5Qrcode("reader");
+
+            const config = {
+                fps: 10,
+                qrbox: function (viewfinderWidth, viewfinderHeight) {
+                    const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
+                    return {
+                        width: edge,
+                        height: edge
+                    };
+                },
+                aspectRatio: 1.0,
+                disableFlip: false
+            };
+
+            setStatus("正在啟動相機，請允許瀏覽器相機權限。", "ok");
+
+            await html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            );
+
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            setStatus("相機已啟動。請將 QRCode / 條碼對準畫面中央。", "ok");
+        } catch (error) {
+            console.error("[START_SCANNER_ERROR]", error);
+
+            html5QrCode = null;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            setStatus("相機啟動失敗：" + normalizeCameraError(error), "error");
+        }
+    }
+
+    async function stopScanner() {
+        try {
+            if (html5QrCode === null) {
+                setStatus("相機尚未啟動。", "error");
+                return;
+            }
+
+            await html5QrCode.stop();
+            await html5QrCode.clear();
+
+            html5QrCode = null;
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            setStatus("相機已停止。", "ok");
+        } catch (error) {
+            console.error("[STOP_SCANNER_ERROR]", error);
+            setStatus("停止相機失敗：" + (error.message || error), "error");
+        }
+    }
+
+    function onScanSuccess(decodedText) {
+        const code = normalizeText(decodedText);
+        const now = Date.now();
+
+        if (code === "") {
+            return;
+        }
+
+        if (code === lastScanText && now - lastScanAt < DEBOUNCE_MS) {
+            return;
+        }
+
+        lastScanText = code;
+        lastScanAt = now;
+
+        resultEl.textContent = code;
+        setStatus("掃描成功：" + code, "ok");
+
+        if (navigator.vibrate) {
+            navigator.vibrate(50);
+        }
+
+        console.log("[SCAN_SUCCESS]", code);
+    }
+
+    function onScanFailure() {
+        // 連續掃描時失敗 callback 會高頻發生，正常忽略。
+    }
+
+    function normalizeCameraError(error) {
+        const message = error && error.message ? error.message : String(error);
+
+        if (message.includes("NotAllowedError")) {
+            return "使用者拒絕相機權限，或瀏覽器 / 系統封鎖相機。";
+        }
+
+        if (message.includes("NotFoundError")) {
+            return "找不到相機裝置。";
+        }
+
+        if (message.includes("NotReadableError")) {
+            return "相機被其他程式占用，或系統拒絕讀取。";
+        }
+
+        if (message.includes("SecurityError")) {
+            return "安全性限制。請確認使用 HTTPS 並非 iframe sandbox。";
+        }
+
+        if (message.includes("Permissions policy")) {
+            return "Permissions Policy 阻擋 camera。此頁可能仍在 iframe / sandbox 中。";
+        }
+
+        return message;
+    }
+
+    clearBtn.addEventListener("click", function () {
+        lastScanText = "";
+        lastScanAt = 0;
+        resultEl.textContent = "尚無";
+        setStatus("結果已清除。", "ok");
+    });
+
+    startBtn.addEventListener("click", startScanner);
+    stopBtn.addEventListener("click", stopScanner);
+
+    renderEnvCheck();
+</script>
+</body>
 </html>
