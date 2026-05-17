@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>掃碼需求提案單 v6</title>
+<title>掃碼需求提案單</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 <style>
 :root{--bg:#f6f8fb;--card:#fff;--ink:#111827;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--blue2:#1d4ed8;--green:#047857;--red:#dc2626;--amber:#92400e}
@@ -14,7 +14,7 @@
 <main>
 <section class="panel">
   <h1>掃碼需求提案單 v6</h1>
-  <p class="muted">單號為唯一追蹤依據；提案標題可選填。歷史查詢限定使用日期。</p>
+  <p class="muted">單號為唯一追蹤依據；提案標題可選填。</p>
   <nav class="tabs" aria-label="主功能分頁">
     <button id="tab-proposal" class="tab-btn active" type="button">需求提案單</button>
     <button id="tab-history" class="tab-btn" type="button">歷史單據查詢</button>
@@ -45,7 +45,7 @@
 
   <section class="panel">
     <h2>提案基本資料</h2>
-    <label>提案標題（選填）<input id="proposal-title" placeholder="例：門市補貨 / 採購需求，可留空"></label>
+    <label>提案標題（選填）<input id="proposal-title" placeholder="例：門市補貨"></label>
     <p class="muted">未填標題時，送出後將以系統單號追蹤。</p>
     <label>提案來源<input id="proposal-source" value="GitHub Pages"></label>
   </section>
@@ -73,7 +73,7 @@
 <section id="page-history" class="page hidden">
   <section class="panel">
     <h2>歷史單據查詢</h2>
-    <p class="muted">後端以日期字串查 createdAt；本頁固定送出 YYYY-MM-DD。</p>
+    <p class="muted">本頁固定送出 YYYY-MM-DD。</p>
     <div class="search-row">
       <label>單據日期<input id="history-date" type="date"></label>
       <button id="btn-history-search" type="button">查詢此日期</button>
