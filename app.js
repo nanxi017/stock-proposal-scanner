@@ -1,6 +1,6 @@
 /*
 【目的】
-- 核心理由：GitHub Pages SPA v6：狀態分區、Scanner 狀態置於掃描窗下、提案標題選填。
+- 核心理由：GitHub Pages SPA ：狀態分區、Scanner 狀態置於掃描窗下、提案標題選填。
 - 權責邊界：[負責]前端 UI/狀態/草稿/日期查詢/提交；[不負責]後端 GAS 修改。
 - MWE：不填提案標題也可 submitProposal；歷史查詢送 q='YYYY-MM-DD'。
 - 致命錯誤邊界：API timeout、Null DOM、HTML injection、重複送出、相機清理已防護；風險受控。
