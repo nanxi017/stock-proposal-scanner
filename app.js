@@ -3,7 +3,7 @@
  */
 
 const CONFIG = {
-    API_URL: 'https://script.google.com/macros/s/YOUR_GAS_DEPLOYMENT_ID/exec', // 部署後請替換此 ID
+    API_URL: 'https://script.google.com/macros/s/AKfycbxw9Y1y3A7N5CUhgp0ACezB12JXqNPXcssvMTwwWk5C2QeMCvn97UdrueSQ6_Jx0rJG/exec', // 部署後請替換此 ID
     APP_KEY: 'public-mvp-key',
     CACHE_KEY_VERSION: 'proposal_sys_version',
     CACHE_KEY_DATA: 'proposal_sys_master_data'
