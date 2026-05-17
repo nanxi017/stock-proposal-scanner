@@ -9,12 +9,12 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
-    body { font-family:sans-serif; margin:0; padding:12px; }
-    .panel { border:1px solid #ddd; padding:12px; margin-bottom:12px; border-radius:8px;}
+    body { font-family:sans-serif; padding:12px; }
+    .panel { border:1px solid #ddd; padding:12px; margin-bottom:12px; }
     button { margin:4px; }
-    .item { border:1px solid #ccc; padding:8px; margin-top:8px; border-radius:6px;}
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; justify-content:center; }
-    .modal-box { background:#fff; margin-top:40px; padding:16px; width:90%; max-width:400px; }
+    .item { border:1px solid #ccc; padding:6px; margin-top:6px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:center; }
+    .box { background:#fff; margin-top:40px; padding:16px; width:90%; max-width:400px; }
   </style>
 </head>
 
@@ -30,22 +30,22 @@
     <p>{{scannerMsg}}</p>
   </div>
 
-  <!-- Manual Input -->
+  <!-- Input -->
   <div class="panel">
     <h3>Input</h3>
-    <input v-model="query" placeholder="barcode / name" @keydown.enter="handleManual">
+    <input v-model="query" @keydown.enter="handleManual" placeholder="barcode / name">
     <input type="number" v-model.number="qty" min="1">
     <button @click="handleManual">加入</button>
-    <p>{{message}}</p>
+    <p>{{msg}}</p>
   </div>
 
   <!-- Draft -->
   <div class="panel">
     <h3>Draft</h3>
-    <div v-for="i in draft.items" :key="i.itemId" class="item">
-      <div>{{i.name}} ({{i.barcode}})</div>
-      <input type="number" v-model.number="i.qty" @change="changeQty(i)">
-      <button @click="remove(i.itemId)">刪除</button>
+    <div v-for="i in draft" :key="i.itemId" class="item">
+      {{i.name}} ({{i.barcode}})
+      <input type="number" v-model.number="i.qty" @change="fixQty(i)">
+      <button @click="remove(i.itemId)">X</button>
     </div>
   </div>
 
@@ -54,11 +54,11 @@
     <button @click="submit">送出</button>
   </div>
 
-  <!-- Modal -->
+  <!-- Picker -->
   <div v-if="showPicker" class="modal" @click.self="closePicker">
-    <div class="modal-box">
+    <div class="box">
       <h3>選擇商品</h3>
-      <div v-for="c in choices" :key="c.itemId" @click="selectChoice(c)">
+      <div v-for="c in choices" @click="pick(c)">
         {{c.name}} - {{c.barcode}}
       </div>
     </div>
