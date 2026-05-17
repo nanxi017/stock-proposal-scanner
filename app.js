@@ -26,6 +26,54 @@ async function loadHistoryDetail(docId){docId=nt(docId);if(!docId||S.detailLoadi
 function renderHistoryDetail(d){setText('detail-doc-id',d&&d.docId?d.docId:'單據明細');setText('detail-summary',[(d&&d.title)||'未命名提案',fmt(d&&d.createdAt),d&&d.status].filter(Boolean).join('｜'));const root=$('detail-items');root.innerHTML='';const items=Array.isArray(d&&d.items)?d.items:[];items.forEach(i=>{const row=document.createElement('div');row.className='detail-item';const left=document.createElement('div');const n=document.createElement('strong');n.textContent=nt(i.name);const m=document.createElement('div');m.className='muted';m.textContent=`${nt(i.itemId)}｜${nt(i.barcode)}`;left.append(n,m);const q=document.createElement('span');q.className='badge';q.textContent='x '+(i.qty??0);row.append(left,q);root.appendChild(row)})}
 async function detectCameras(){const cams=await Html5Qrcode.getCameras();S.cameras=Array.isArray(cams)?cams:[];setText('camera-diagnostic',`cameraCount=${S.cameras.length}\n`+S.cameras.map((c,i)=>`${i+1}. ${c.label||'(未命名)'}`).join('\n'));return S.cameras}
 function scanConfig(){return{fps:10,qrbox:250}}async function cleanupScanner(){if(S.scanner){try{await S.scanner.stop()}catch(e){}try{await S.scanner.clear()}catch(e){}}S.scanner=null;$('reader-wrap').classList.remove('active');$('btn-start').disabled=false;$('btn-stop').disabled=true}function onScanSuccess(txt){const code=nt(txt),now=Date.now();if(!code||code===S.lastScanText&&now-S.lastScanAt<CONFIG.SCAN_DEBOUNCE_MS)return;S.lastScanText=code;S.lastScanAt=now;const q=$('manual-query');if(q)q.value=code;setStatus('scanner-status',`已掃描：${code}，解析中...`,'ok');handleInput(code,1,'scanner')}async function startScanner(){if(S.scanner)return;if(typeof Html5Qrcode==='undefined'){setStatus('scanner-status','html5-qrcode 尚未載入','error');return}$('reader-wrap').classList.add('active');$('btn-start').disabled=true;try{let cams=[];try{cams=await detectCameras()}catch(e){}const rear=cams.find(c=>/back|rear|environment|後|背/i.test(nt(c.label)));const id=(rear||cams[0]||{}).id;S.scanner=new Html5Qrcode('reader');await S.scanner.start(id||{facingMode:'environment'},scanConfig(),onScanSuccess,()=>{});$('btn-stop').disabled=false;setStatus('scanner-status','相機已啟動，請對準 QRCode / 條碼','ok')}catch(e){await cleanupScanner();setStatus('scanner-status',`相機啟動失敗：${e.message||e}`,'error')}}async function stopScanner(){await cleanupScanner();setStatus('scanner-status','相機已停止','ok')}function pauseScanner(){try{if(S.scanner&&S.scanner.getState&&S.scanner.getState()===2)S.scanner.pause()}catch(_){}}function resumeScanner(){try{if(S.scanner&&S.scanner.getState&&S.scanner.getState()===3)S.scanner.resume()}catch(_){}}
-async function submitProposal(){if(S.submitting)return;const title=nt($('proposal-title').value),source=nt($('proposal-source').value)||'GitHub Pages';if(S.draftItems.length===0){setStatus('submit-status','草稿沒有品項','error');return}S.submitting=true;const btn=$('btn-submit');btn.disabled=true;btn.textContent='送出中...';try{const data=await apiRequest('submitProposal',{title,source,clientRequestId:'uid-'+Date.now(),items:S.draftItems});setStatus('submit-status',`送出成功：${data&&data.docId?data.docId:'已建立單號'}`,'ok');S.draftItems=[];renderDraft();$('proposal-title').value='';updateSubmitHint()}catch(e){setStatus('submit-status',`送出失敗：${e.message}`,'error')}finally{S.submitting=false;btn.disabled=false;btn.textContent='送出提案'}}
+
+async function submitProposal() {
+    // 1. 防止重複連點送出
+    if (S.submitting) return;
+
+    // 2. 取得並處理輸入欄位資料
+    const title = nt($('proposal-title').value);
+    const note = nt($('proposal-note').value) || 'GitHub Pages';
+
+    // 3. 檢查草稿內是否有品項
+    if (S.draftItems.length === 0) {
+        setStatus('submit-status', '草稿沒有品項', 'error');
+        return;
+    }
+
+    // 4. 鎖定送出狀態與更新按鈕 UI
+    S.submitting = true;
+    const btn = $('btn-submit');
+    btn.disabled = true;
+    btn.textContent = '送出中...';
+
+    // 5. 執行 API 請求並處理結果
+    try {
+        const data = await apiRequest('submitProposal', {
+            title,
+            note,
+            clientRequestId: 'uid-' + Date.now(),
+            items: S.draftItems
+        });
+
+        // 成功處理：顯示單號、清空草稿、重置輸入框
+        setStatus('submit-status', `送出成功：${data && data.docId ? data.docId : '已建立單號'}`, 'ok');
+        S.draftItems = [];
+        renderDraft();
+        $('proposal-title').value = '';
+        updateSubmitHint();
+
+    } catch (e) {
+        // 失敗處理：顯示錯誤訊息
+        setStatus('submit-status', `送出失敗：${e.message}`, 'error');
+
+    } finally {
+        // 無論成功或失敗，最後都解鎖狀態與恢復按鈕
+        S.submitting = false;
+        btn.disabled = false;
+        btn.textContent = '送出提案';
+    }
+}
+
 function bind(){$('tab-proposal').onclick=()=>switchPage('proposal');$('tab-history').onclick=()=>switchPage('history');$('btn-history-search').onclick=()=>searchHistory($('history-date').value);$('btn-history-today').onclick=()=>{const q=todayKey();$('history-date').value=q;searchHistory(q)};$('history-date').onchange=()=>searchHistory($('history-date').value);$('btn-close-detail').onclick=()=>$('detail-modal').classList.add('hidden');$('detail-modal').onclick=e=>{if(e.target.id==='detail-modal')$('detail-modal').classList.add('hidden')};$('btn-add').onclick=()=>handleInput($('manual-query').value,$('manual-qty').value,'manual');$('manual-query').onkeydown=e=>{if(e.key==='Enter')handleInput($('manual-query').value,$('manual-qty').value,'manual')};$('proposal-title').oninput=updateSubmitHint;$('btn-submit').onclick=submitProposal;$('btn-clear').onclick=()=>{S.draftItems=[];renderDraft();setStatus('submit-status','草稿已清空','ok')};$('btn-close-picker').onclick=()=>$('picker').classList.add('hidden');$('picker').onclick=e=>{if(e.target.id==='picker')$('picker').classList.add('hidden')};$('btn-start').onclick=startScanner;$('btn-stop').onclick=stopScanner}
 document.addEventListener('DOMContentLoaded',()=>{bind();renderDraft();renderHistoryResults();switchPage('proposal');syncMasterData(false)});
