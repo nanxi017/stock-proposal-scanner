@@ -5,10 +5,372 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>掃碼需求提案單</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+
 <style>
-:root{--bg:#f6f8fb;--card:#fff;--ink:#111827;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--blue2:#1d4ed8;--green:#047857;--red:#dc2626;--amber:#92400e}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:18px;line-height:1.5}main{width:min(100%,920px);margin:auto;padding:14px}.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px #0f172a10}h1{margin:0 0 10px;font-size:28px}h2{margin:0 0 12px;font-size:22px}label{display:block;font-weight:800;margin-bottom:10px}input{width:100%;margin-top:6px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:18px;color:var(--ink)}button{min-height:46px;border:0;border-radius:12px;background:var(--blue);color:#fff;font-weight:900;font-size:17px;padding:10px 16px;cursor:pointer;touch-action:manipulation}button:active{background:var(--blue2);transform:translateY(1px)}button:disabled{background:#94a3b8;cursor:not-allowed}.ghost{background:#eef2ff;color:#1e40af}.secondary{background:#475569}.danger{background:var(--red)}.tabs,.button-row,.advanced-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.tab-btn{background:#e0e7ff;color:#1e40af}.tab-btn.active{background:var(--blue);color:#fff}.row,.search-row{display:grid;grid-template-columns:1fr 120px auto;gap:10px;align-items:end}.search-row{grid-template-columns:1fr auto auto}.status{min-height:28px;margin:10px 0 0;font-weight:800;color:var(--green);word-break:break-word}.status.error{color:var(--red)}.status.warn{color:var(--amber)}.muted{color:var(--muted);font-size:15px}.system-strip{padding:10px 12px;background:#f8fafc;border:1px solid var(--line);border-radius:14px}.diagnostic{margin-top:8px;padding:10px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;color:var(--muted);font-size:14px;white-space:pre-wrap;word-break:break-word}.camera-panel.compact{padding-bottom:12px}.reader-wrap{display:none;margin-top:12px;border-radius:16px;overflow:hidden;background:#000;border:1px solid var(--line);min-height:320px}.reader-wrap.active{display:block}#reader{width:100%;min-height:320px}#reader video{width:100%!important;height:auto!important;min-height:280px;object-fit:cover}.scanner-result{margin-top:10px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid var(--line)}.item-card,.choice-card,.doc-card{border:1px solid var(--line);border-radius:14px;background:#fff;margin-top:10px;padding:12px}.item-card{display:grid;grid-template-columns:1fr 110px auto;gap:10px}.choice-card,.doc-card{cursor:pointer}.choice-card:hover,.doc-card:hover{border-color:var(--blue)}.item-name,.doc-title{font-size:19px;font-weight:900}.badge-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.badge{border-radius:999px;background:#eff6ff;color:#1e40af;font-size:15px;font-weight:800;padding:4px 10px}.doc-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.detail-item{display:grid;grid-template-columns:1fr auto;gap:10px;border-bottom:1px solid var(--line);padding:10px 0}.modal-backdrop{position:fixed;inset:0;z-index:999;background:#0f172a88;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px}.modal-panel{width:min(100%,680px);max-height:88vh;overflow:auto;background:#fff;border-radius:20px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.modal-header{display:flex;justify-content:space-between;gap:12px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:10px}.hidden{display:none!important}@media(max-width:640px){main{padding:10px}.row,.search-row{grid-template-columns:1fr}.button-row button,.advanced-row button,.row button,.search-row button{width:100%}.item-card{grid-template-columns:1fr}input,button{font-size:19px}#reader{min-height:360px}#reader video{min-height:330px}.doc-main{display:block}}
+  /* --- 1. 核心變數與基礎設定 --- */
+  :root {
+    --bg: #f6f8fb;
+    --card: #fff;
+    --ink: #111827;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --blue: #2563eb;
+    --blue2: #1d4ed8;
+    --green: #047857;
+    --red: #dc2626;
+    --amber: #92400e;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+
+  main {
+    width: min(100%, 920px);
+    margin: auto;
+    padding: 14px;
+  }
+
+  /* --- 2. 佈局組件 --- */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 10px #0f172a10;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: 28px;
+  }
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 22px;
+  }
+
+  /* --- 3. 表單與輸入元件 --- */
+  label {
+    display: block;
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+
+  input {
+    width: 100%;
+    margin-top: 6px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    font-size: 18px;
+    color: var(--ink);
+  }
+
+  button {
+    min-height: 46px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--blue);
+    color: #fff;
+    font-weight: 900;
+    font-size: 17px;
+    padding: 10px 16px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  button:active {
+    background: var(--blue2);
+    transform: translateY(1px);
+  }
+
+  button:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+  }
+
+  /* 按鈕變體 */
+  .ghost {
+    background: #eef2ff;
+    color: #1e40af;
+  }
+
+  .secondary {
+    background: #475569;
+  }
+
+  .danger {
+    background: var(--red);
+  }
+
+  /* --- 4. 導覽與頁籤 --- */
+  .tabs,
+  .button-row,
+  .advanced-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .tab-btn {
+    background: #e0e7ff;
+    color: #1e40af;
+  }
+
+  .tab-btn.active {
+    background: var(--blue);
+    color: #fff;
+  }
+
+  /* --- 5. 狀態顯示與網格排版 --- */
+  .row,
+  .search-row {
+    display: grid;
+    grid-template-columns: 1fr 120px auto;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr auto auto;
+  }
+
+  .status {
+    min-height: 28px;
+    margin: 10px 0 0;
+    font-weight: 800;
+    color: var(--green);
+    word-break: break-word;
+  }
+
+  .status.error {
+    color: var(--red);
+  }
+
+  .status.warn {
+    color: var(--amber);
+  }
+
+  .muted {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  /* --- 6. 掃描器相關 --- */
+  .system-strip {
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+
+  .diagnostic {
+    margin-top: 8px;
+    padding: 10px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .reader-wrap {
+    display: none;
+    margin-top: 12px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--line);
+    min-height: 320px;
+  }
+
+  .reader-wrap.active {
+    display: block;
+  }
+
+  #reader {
+    width: 100%;
+    min-height: 320px;
+  }
+
+  #reader video {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 280px;
+    object-fit: cover;
+  }
+
+  .scanner-result {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+  }
+
+  /* --- 7. 卡片元件 (Card Components) --- */
+  
+  /* 【修改重點】草稿品項卡片：改為醒目的藍色風格 */
+  .item-card {
+    display: grid;
+    grid-template-columns: 1fr 110px auto;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    background: #f0f7ff;                /* 淺藍色背景 */
+    border: 2px solid var(--blue);      /* 醒目藍色粗邊框 */
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15); /* 藍色系陰影 */
+    transition: transform 0.1s ease;
+  }
+
+  .item-card:active {
+    transform: scale(0.99);
+  }
+
+  /* 一般選擇卡片與歷史紀錄卡片 */
+  .choice-card,
+  .doc-card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    margin-top: 10px;
+    padding: 12px;
+    cursor: pointer;
+  }
+
+  .choice-card:hover,
+  .doc-card:hover {
+    border-color: var(--blue);
+  }
+
+  .item-name,
+  .doc-title {
+    font-size: 19px;
+    font-weight: 900;
+  }
+
+  .badge-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .badge {
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 4px 10px;
+  }
+
+  /* --- 8. 詳情與彈窗 (Modals) --- */
+  .doc-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .detail-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: #0f172a88;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+
+  .modal-panel {
+    width: min(100%, 680px);
+    max-height: 88vh;
+    overflow: auto;
+    background: #fff;
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: start;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  /* --- 9. 手機版響應式優化 (Mobile RWD) --- */
+  @media (max-width: 640px) {
+    main {
+      padding: 10px;
+    }
+
+    .row,
+    .search-row {
+      grid-template-columns: 1fr;
+    }
+
+    .button-row button,
+    .advanced-row button,
+    .row button,
+    .search-row button {
+      width: 100%;
+    }
+
+    .item-card {
+      grid-template-columns: 1fr;
+    }
+
+    input,
+    button {
+      font-size: 19px;
+    }
+
+    #reader {
+      min-height: 360px;
+    }
+
+    #reader video {
+      min-height: 330px;
+    }
+
+    .doc-main {
+      display: block;
+    }
+  }
 </style>
+  
 </head>
 <body>
 <main>
