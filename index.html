@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>提案單前端 v2</title>
-  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <title>提案單前端 v3</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
   <link rel="preconnect" href="https://script.google.com">
   <style>
     :root {
@@ -33,9 +33,10 @@
     .status.warn { color:var(--amber); }
     .muted { color:var(--muted); font-size:15px; }
     .diagnostic { margin-top:8px; padding:10px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; color:var(--muted); font-size:14px; white-space:pre-wrap; word-break:break-word; }
-    .reader-wrap { margin-top:12px; border-radius:16px; overflow:hidden; background:#000; border:1px solid var(--line); display:none; }
-    .reader-wrap.active { display:block; }
-    #reader { width:100%; min-height:280px; }
+    .reader-wrap { margin-top:12px; border-radius:16px; overflow:hidden; background:#000; border:1px solid var(--line); min-height:320px; visibility:hidden; position:absolute; left:-99999px; width:1px; height:1px; }
+    .reader-wrap.active { visibility:visible; position:relative; left:auto; width:100%; height:auto; }
+    #reader { width:100%; min-height:320px; background:#000; }
+    #reader video { width:100% !important; height:auto !important; min-height:280px; object-fit:cover; }
     .item-card, .choice-card { border:1px solid var(--line); border-radius:14px; background:#fff; margin-top:10px; padding:12px; }
     .item-card { display:grid; grid-template-columns:1fr 110px auto; gap:10px; align-items:start; }
     .item-name { font-size:19px; font-weight:900; }
@@ -52,14 +53,16 @@
       .item-card { grid-template-columns:1fr; }
       .button-row button, .row button { width:100%; }
       input, textarea, button { font-size:19px; }
-      #reader { min-height:330px; }
+      .reader-wrap { min-height:360px; }
+      #reader { min-height:360px; }
+      #reader video { min-height:330px; }
     }
   </style>
 </head>
 <body>
 <main>
   <section class="panel">
-    <h1>掃碼需求提案單 v2</h1>
+    <h1>掃碼需求提案單 v3</h1>
     <p class="muted">GitHub Pages 前端；後端使用 GAS Web App API。</p>
   </section>
 
@@ -80,6 +83,7 @@
       <button id="btn-stop" type="button" class="secondary" disabled>停止相機</button>
       <button id="btn-sync" type="button" class="ghost">同步主檔</button>
       <button id="btn-cameras" type="button" class="ghost">檢查相機</button>
+      <button id="btn-video" type="button" class="ghost">檢查畫面</button>
     </div>
     <p id="scanner-status" class="status warn">相機尚未啟動</p>
     <div id="camera-diagnostic" class="diagnostic">尚未檢查相機。</div>
@@ -126,6 +130,6 @@
   </section>
 </div>
 
-<script src="app.js?v=20260517-scanner-v2"></script>
+<script src="app.js?v=20260517-scanner-v3"></script>
 </body>
 </html>
