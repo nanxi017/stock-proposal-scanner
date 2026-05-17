@@ -2,70 +2,128 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Proposal UI</title>
-
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>提案單前端</title>
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <link rel="preconnect" href="https://script.google.com">
   <style>
-    body { font-family:sans-serif; padding:12px; }
-    .panel { border:1px solid #ddd; padding:12px; margin-bottom:12px; }
-    button { margin:4px; }
-    .item { border:1px solid #ccc; padding:6px; margin-top:6px; }
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; justify-content:center; }
-    .box { background:#fff; margin-top:40px; padding:16px; width:90%; max-width:400px; }
+    :root {
+      --bg:#f6f8fb; --card:#fff; --ink:#111827; --muted:#64748b; --line:#e2e8f0;
+      --blue:#2563eb; --blue-dark:#1d4ed8; --green:#047857; --red:#dc2626; --amber:#92400e;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:18px; line-height:1.5; }
+    main { width:min(100%, 920px); margin:0 auto; padding:14px; }
+    .panel { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; margin-bottom:14px; box-shadow:0 2px 10px rgba(15,23,42,.06); }
+    h1 { margin:0 0 12px; font-size:28px; }
+    h2 { margin:0 0 12px; font-size:22px; }
+    label { display:block; margin-bottom:10px; font-weight:800; }
+    input, textarea { width:100%; margin-top:6px; padding:12px 13px; border:1px solid #cbd5e1; border-radius:12px; color:var(--ink); font-size:18px; }
+    input:focus, textarea:focus { border-color:var(--blue); outline:3px solid rgba(37,99,235,.15); }
+    button { min-height:46px; border:0; border-radius:12px; background:var(--blue); color:#fff; cursor:pointer; font-size:17px; font-weight:900; padding:10px 16px; touch-action:manipulation; }
+    button:active { background:var(--blue-dark); transform:translateY(1px); }
+    button:disabled { background:#94a3b8; cursor:not-allowed; transform:none; }
+    button.secondary { background:#475569; }
+    button.ghost { background:#eef2ff; color:#1e40af; }
+    button.danger { background:var(--red); }
+    .row { display:grid; grid-template-columns:1fr 120px auto; gap:10px; align-items:end; }
+    .button-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .status { min-height:28px; margin:10px 0 0; font-weight:800; color:var(--green); word-break:break-word; }
+    .status.error { color:var(--red); }
+    .status.warn { color:var(--amber); }
+    .muted { color:var(--muted); font-size:15px; }
+    .reader-wrap { margin-top:12px; border-radius:16px; overflow:hidden; background:#000; border:1px solid var(--line); display:none; }
+    .reader-wrap.active { display:block; }
+    #reader { width:100%; min-height:280px; }
+    .item-card, .choice-card { border:1px solid var(--line); border-radius:14px; background:#fff; margin-top:10px; padding:12px; }
+    .item-card { display:grid; grid-template-columns:1fr 110px auto; gap:10px; align-items:start; }
+    .item-name { font-size:19px; font-weight:900; }
+    .badge-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .badge { border-radius:999px; background:#eff6ff; color:#1e40af; font-size:15px; font-weight:800; padding:4px 10px; }
+    .modal-backdrop { position:fixed; inset:0; z-index:999; background:rgba(15,23,42,.55); display:flex; justify-content:center; align-items:flex-start; padding:24px 12px; }
+    .modal-panel { width:min(100%, 680px); max-height:88vh; overflow:auto; background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,.25); padding:16px; }
+    .modal-header { display:flex; justify-content:space-between; gap:12px; align-items:start; border-bottom:1px solid var(--line); padding-bottom:10px; }
+    .choice-card { cursor:pointer; }
+    .choice-card:hover { border-color:var(--blue); }
+    .hidden { display:none !important; }
+    @media (max-width:640px) {
+      main { padding:10px; }
+      .row { grid-template-columns:1fr; }
+      .item-card { grid-template-columns:1fr; }
+      .button-row button, .row button { width:100%; }
+      input, textarea, button { font-size:19px; }
+      #reader { min-height:330px; }
+    }
   </style>
 </head>
-
 <body>
-<div id="app">
+<main>
+  <section class="panel">
+    <h1>掃碼需求提案單</h1>
+    <p class="muted">GitHub Pages 前端；後端使用 GAS Web App API。</p>
+  </section>
 
-  <!-- Scanner -->
-  <div class="panel">
-    <h3>Scanner</h3>
-    <button @click="startScanner" :disabled="scannerRunning">Start</button>
-    <button @click="stopScanner" :disabled="!scannerRunning">Stop</button>
-    <div id="reader"></div>
-    <p>{{scannerMsg}}</p>
-  </div>
+  <section class="panel">
+    <h2>提案基本資料</h2>
+    <label>提案標題
+      <input id="proposal-title" type="text" placeholder="例：門市補貨 / 採購需求" autocomplete="off">
+    </label>
+    <label>提案來源
+      <input id="proposal-source" type="text" placeholder="例：GitHub Pages / 線上門市" autocomplete="off" value="GitHub Pages">
+    </label>
+  </section>
 
-  <!-- Input -->
-  <div class="panel">
-    <h3>Input</h3>
-    <input v-model="query" @keydown.enter="handleManual" placeholder="barcode / name">
-    <input type="number" v-model.number="qty" min="1">
-    <button @click="handleManual">加入</button>
-    <p>{{msg}}</p>
-  </div>
-
-  <!-- Draft -->
-  <div class="panel">
-    <h3>Draft</h3>
-    <div v-for="i in draft" :key="i.itemId" class="item">
-      {{i.name}} ({{i.barcode}})
-      <input type="number" v-model.number="i.qty" @change="fixQty(i)">
-      <button @click="remove(i.itemId)">X</button>
+  <section class="panel">
+    <h2>Scanner</h2>
+    <div class="button-row">
+      <button id="btn-start" type="button">啟動相機</button>
+      <button id="btn-stop" type="button" class="secondary" disabled>停止相機</button>
+      <button id="btn-sync" type="button" class="ghost">同步主檔</button>
     </div>
-  </div>
+    <p id="scanner-status" class="status warn">相機尚未啟動</p>
+    <div id="reader-wrap" class="reader-wrap"><div id="reader"></div></div>
+  </section>
 
-  <!-- Submit -->
-  <div class="panel">
-    <button @click="submit">送出</button>
-  </div>
+  <section class="panel">
+    <h2>手動加入</h2>
+    <div class="row">
+      <label>條碼 / 品名 / 品項ID
+        <input id="manual-query" type="search" placeholder="輸入條碼或品名關鍵字" autocomplete="off">
+      </label>
+      <label>數量
+        <input id="manual-qty" type="number" min="1" step="1" value="1" inputmode="numeric">
+      </label>
+      <button id="btn-add" type="button">查詢 / 加入</button>
+    </div>
+    <p id="message" class="status"></p>
+  </section>
 
-  <!-- Picker -->
-  <div v-if="showPicker" class="modal" @click.self="closePicker">
-    <div class="box">
-      <h3>選擇商品</h3>
-      <div v-for="c in choices" @click="pick(c)">
-        {{c.name}} - {{c.barcode}}
+  <section class="panel">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+      <h2 style="margin:0;">草稿品項</h2>
+      <span id="total-badge" class="badge">品項 0｜總數 0</span>
+    </div>
+    <div id="draft-list"></div>
+    <div class="button-row">
+      <button id="btn-submit" type="button">送出提案</button>
+      <button id="btn-clear" type="button" class="secondary">清空草稿</button>
+    </div>
+  </section>
+</main>
+
+<div id="picker" class="modal-backdrop hidden">
+  <section class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0;">選擇商品</h2>
+        <p class="muted" style="margin:4px 0 0;">找到多筆，請點選一筆加入草稿。</p>
       </div>
+      <button id="btn-close-picker" type="button" class="ghost">關閉</button>
     </div>
-  </div>
-
+    <div id="choice-list"></div>
+  </section>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=20260517-frontend-fix"></script>
 </body>
 </html>
