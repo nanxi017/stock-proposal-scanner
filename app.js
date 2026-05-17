@@ -331,18 +331,47 @@ function renderHistoryResults() {
   });
 }
 
+/* 
+【目的】
+- 核心理由：消除異步等待焦慮，提供即時操作反饋
+- 權責邊界：[負責] 載入中狀態控制 [不負責] 網路超時處理
+*/
 async function loadHistoryDetail(docId) {
   if (S.detailLoading) return;
+  
+  // 1. 立即進入載入狀態
   S.detailLoading = true;
+  setStatus('history-message', `正在讀取單據 ${docId}...`, 'warn');
+
+  // 2. 立即顯示彈窗，並呈現「讀取中」樣式
+  renderDetailLoadingState(docId);
+  $('detail-modal').classList.remove('hidden');
+
   try {
     const d = await apiRequest('getProposalDetail', { docId });
+    
+    // 3. 成功後填充真實資料
     renderHistoryDetail(d);
-    $('detail-modal').classList.remove('hidden');
+    setStatus('history-message', `單據 ${docId} 讀取完成`, 'ok');
   } catch (e) {
-    setStatus('history-message', `載入細節失敗：${e.message}`, 'error');
+    // 4. 失敗處理
+    setStatus('history-message', `載入失敗：${e.message}`, 'error');
+    $('detail-modal').classList.add('hidden'); // 失敗則關閉彈窗
   } finally {
     S.detailLoading = false;
   }
+}
+
+// 新增：顯示「載入中」的彈窗內容
+function renderDetailLoadingState(docId) {
+  setText('detail-doc-id', docId);
+  setText('detail-summary', '資料連線中，請稍候...');
+  $('detail-items').innerHTML = `
+    <div style="padding: 40px 0; text-align: center; color: var(--muted);">
+      <div class="loading-spinner"></div>
+      <p>正在從雲端抓取明細...</p>
+    </div>
+  `;
 }
 
 function renderHistoryDetail(d) {
