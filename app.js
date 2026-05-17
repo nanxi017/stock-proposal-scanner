@@ -1,8 +1,9 @@
 /**
- * GAS 掃碼提案系統 v2.1 - 前端核心邏輯
+ * GAS 掃碼提案系統 v2.1 - 前端核心邏輯 (最終強化版)
  */
 
 const CONFIG = {
+    // ⚠️ 重要：請將此處替換為您部署後的 GAS Web App URL (必須包含 /exec)
     API_URL: 'https://script.google.com/macros/s/AKfycbxw9Y1y3A7N5CUhgp0ACezB12JXqNPXcssvMTwwWk5C2QeMCvn97UdrueSQ6_Jx0rJG/exec', // 部署後請替換此 ID
     APP_KEY: 'public-mvp-key',
     CACHE_KEY_VERSION: 'proposal_sys_version',
@@ -18,31 +19,51 @@ let state = {
 };
 
 /**
- * 初始化系統
+ * 系統初始化
  */
 async function init() {
     showToast('系統啟動中...');
-    await syncMasterData();
-    setupScanner();
-    updateProposalList();
+    try {
+        await syncMasterData();
+        setupScanner();
+        updateProposalList();
+    } catch (e) {
+        console.error('初始化崩潰:', e);
+        showToast(`初始化失敗: ${e.message}`);
+    }
 }
 
 /**
  * 主檔同步邏輯：版本檢查 -> 必要時下載快照
+ * 強化版：增加嚴格的 response 檢查，防止 TypeError
  */
 async function syncMasterData() {
     try {
         // 1. 獲取遠端最新版本
         const response = await apiRequest('getMasterVersion');
-        const remoteVersion = response.data.version;
+        
+        // 【防錯檢查】確認後端回傳成功且包含資料
+        if (!response || response.success === false) {
+            throw new Error(response ? response.message : '後端無回應');
+        }
+        if (!response.data || !response.data.version) {
+            throw new Error('後端回傳格式異常 (缺少版本資訊)');
+        }
 
-        // 2. 比對本地版本
+        const remoteVersion = response.data.version;
         const localVersion = localStorage.getItem(CONFIG.CACHE_KEY_VERSION);
         
         if (remoteVersion !== localVersion) {
             console.log('偵測到主檔更新，開始同步...');
             const snapshotResponse = await apiRequest('getMasterSnapshot');
             
+            if (!snapshotResponse || snapshotResponse.success === false) {
+                throw new Error('獲取快照失敗: ' + (snapshotResponse ? snapshotResponse.message : '未知錯誤'));
+            }
+            if (!snapshotResponse.data || !snapshotResponse.data.items) {
+                throw new Error('主檔快照資料格式錯誤');
+            }
+
             // 將陣列轉換為 Map 以提升查詢速度 (O(1))
             const dataMap = {};
             snapshotResponse.data.items.forEach(item => {
@@ -60,8 +81,8 @@ async function syncMasterData() {
             console.log('主檔已是最新版本');
         }
     } catch (e) {
-        console.error('同步失敗:', e);
-        showToast('主檔同步失敗，請檢查網路');
+        console.error('同步流程失敗:', e);
+        showToast(`❌ ${e.message}`); 
     }
 }
 
@@ -84,7 +105,6 @@ function onScanSuccess(decodedText) {
         return;
     }
 
-    // 檢查是否已存在於草稿中
     const existingIdx = state.draftItems.findIndex(i => i.itemId === item.itemId);
     if (existingIdx > -1) {
         state.draftItems[existingIdx].qty += 1;
@@ -171,13 +191,13 @@ async function submitProposal() {
 
     try {
         const response = await apiRequest('submitProposal', payload);
-        if (response.success) {
+        if (response && response.success) {
             showToast(`提交成功！單號: ${response.data.docId}`);
             state.draftItems = [];
             document.getElementById('proposal-title').value = '';
             updateProposalList();
         } else {
-            throw new Error(response.message);
+            throw new Error(response ? response.message : '未知錯誤');
         }
     } catch (e) {
         showToast('提交失敗: ' + e.message);
@@ -204,6 +224,10 @@ async function searchHistory() {
             payload: { q: query }
         });
 
+        if (!response || response.success === false) {
+            throw new Error(response ? response.message : '查詢失敗');
+        }
+
         if (response.data.items.length === 0) {
             resultsEl.innerHTML = '<p class="text-center py-4 text-sm text-gray-400">查無紀錄</p>';
             return;
@@ -220,7 +244,7 @@ async function searchHistory() {
             </div>
         `).join('');
     } catch (e) {
-        showToast('查詢失敗');
+        resultsEl.innerHTML = `<p class="text-center py-4 text-sm text-red-500">${e.message}</p>`;
     }
 }
 
@@ -232,39 +256,44 @@ async function viewDetail(docId) {
             payload: { docId: docId }
         });
         
+        if (!response || response.success === false) {
+            throw new Error(response ? response.message : '獲取詳情失敗');
+        }
+
         const d = response.data;
         let itemsHtml = d.items.map(i => `<li class="text-sm py-1 border-b">${i.name} x ${i.qty}</li>`).join('');
         
         alert(`提案單詳情\n單號: ${d.docId}\n標題: ${d.title}\n項目:\n${itemsHtml}`);
     } catch (e) {
-        showToast('獲取詳情失敗');
+        showToast(e.message);
     }
 }
 
 /**
- * 統一 API 通訊層 (核心技巧：使用 text/plain 避開 CORS Preflight)
+ * 統一 API 通訊層
+ * 實作 text/plain 避開 CORS Preflight 預檢
  */
 async function apiRequest(action, body = null) {
-    // 如果沒有提供 body，則建立基礎的查詢請求
     if (!body) {
         body = { action, appKey: CONFIG.APP_KEY, payload: {} };
     }
 
-    const response = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        mode: 'no-cors', // 注意：GAS Web App 在 no-cors 模式下無法讀取 Response
-        // 但計畫書要求使用 text/plain 且 GAS 端會回傳 302 重新定向
-        // 實際上，為了能讀取 JSON 回傳值，我們必須使用 mode: 'cors' 
-        // 並在 GAS 端正確處理 headers。
-    });
+    try {
+        const res = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(body)
+        });
 
-    // 修正：對於 GAS Web App，正確的做法是使用 mode: 'cors' 
-    // 但 body 必須是 text/plain 才能避開 OPTIONS 請求
-    return fetch(CONFIG.API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(body)
-    }).then(res => res.json());
+        if (!res.ok) {
+            throw new Error(`HTTP 錯誤! 狀態碼: ${res.status}`);
+        }
+
+        return await res.json(); 
+    } catch (e) {
+        console.error('API 通訊層崩潰:', e);
+        return { success: false, message: '網路通訊失敗: ' + e.message, data: null };
+    }
 }
 
 /**
