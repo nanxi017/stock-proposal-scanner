@@ -42,15 +42,16 @@ async function syncMasterData() {
         // 1. 獲取遠端最新版本
         const response = await apiRequest('getMasterVersion');
         
-        // 【防錯檢查】確認後端回傳成功且包含資料
         if (!response || response.success === false) {
             throw new Error(response ? response.message : '後端無回應');
         }
-        if (!response.data || !response.data.version) {
+
+        // 【修正點 1】現在 response.data 直接就是版本字串，不再是物件
+        if (!response.data) {
             throw new Error('後端回傳格式異常 (缺少版本資訊)');
         }
 
-        const remoteVersion = response.data.version;
+        const remoteVersion = response.data; // 直接賦值，不再讀取 .version
         const localVersion = localStorage.getItem(CONFIG.CACHE_KEY_VERSION);
         
         if (remoteVersion !== localVersion) {
@@ -60,13 +61,16 @@ async function syncMasterData() {
             if (!snapshotResponse || snapshotResponse.success === false) {
                 throw new Error('獲取快照失敗: ' + (snapshotResponse ? snapshotResponse.message : '未知錯誤'));
             }
-            if (!snapshotResponse.data || !snapshotResponse.data.items) {
-                throw new Error('主檔快照資料格式錯誤');
+
+            // 【修正點 2】現在 snapshotResponse.data 直接就是項目陣列 [ ... ]
+            const itemsArray = snapshotResponse.data; 
+            if (!Array.isArray(itemsArray)) {
+                throw new Error('主檔快照資料格式錯誤 (預期為陣列)');
             }
 
-            // 將陣列轉換為 Map 以提升查詢速度 (O(1))
+            // 將陣列轉換為 Map
             const dataMap = {};
-            snapshotResponse.data.items.forEach(item => {
+            itemsArray.forEach(item => {
                 dataMap[item.barcode] = { itemId: item.itemId, name: item.name };
             });
 
