@@ -13,7 +13,7 @@
 <body>
 <main>
 <section class="panel">
-  <h1>掃碼需求提案單 v6</h1>
+  <h1>掃碼需求提案單</h1>
   <p class="muted">單號為唯一追蹤依據；提案標題可選填。</p>
   <nav class="tabs" aria-label="主功能分頁">
     <button id="tab-proposal" class="tab-btn active" type="button">需求提案單</button>
@@ -21,15 +21,18 @@
   </nav>
   <div class="system-strip" style="margin-top:12px">
     <div id="system-status" class="status warn" style="margin:0">系統尚未同步主檔</div>
-    <div class="advanced-row">
-      <button id="btn-sync" class="ghost" type="button">同步主檔</button>
-      <button id="btn-cameras" class="ghost" type="button">檢查相機</button>
-    </div>
-    <div id="camera-diagnostic" class="diagnostic">尚未檢查相機。</div>
+    
   </div>
 </section>
 
 <section id="page-proposal" class="page">
+  <section class="panel">
+    <h2>提案基本資料</h2>
+    <label>提案標題（選填）<input id="proposal-title" placeholder="例：門市補貨"></label>
+    <p class="muted">未填標題時，送出後將以系統單號追蹤。</p>
+    <label>提案來源<input id="proposal-source" value="GitHub Pages"></label>
+  </section>
+
   <section class="panel camera-panel compact">
     <h2>相機輸入</h2>
     <div class="button-row">
@@ -41,13 +44,6 @@
       <div class="muted">掃描狀態</div>
       <div id="scanner-status" class="status warn">相機尚未啟動</div>
     </div>
-  </section>
-
-  <section class="panel">
-    <h2>提案基本資料</h2>
-    <label>提案標題（選填）<input id="proposal-title" placeholder="例：門市補貨"></label>
-    <p class="muted">未填標題時，送出後將以系統單號追蹤。</p>
-    <label>提案來源<input id="proposal-source" value="GitHub Pages"></label>
   </section>
 
   <section class="panel">
