@@ -21,7 +21,71 @@ function renderChoices(){const root=$('choice-list');root.innerHTML='';S.choices
 function switchPage(p){const h=p==='history';$('page-proposal').classList.toggle('hidden',h);$('page-history').classList.toggle('hidden',!h);$('tab-proposal').classList.toggle('active',!h);$('tab-history').classList.toggle('active',h);if(h&&S.historyItems.length===0)setStatus('history-message','請選擇日期查詢，或點今日單據。','warn')}
 function todayKey(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}function fmt(v){if(!v)return'';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString('zh-TW',{hour12:false})}
 async function searchHistory(q){q=nt(q);if(!/^\d{4}-\d{2}-\d{2}$/.test(q)){setStatus('history-message','請選擇有效日期（YYYY-MM-DD）','error');return}if(S.historyLoading)return;S.historyLoading=true;try{setStatus('history-message','查詢中...','warn');const data=await apiRequest('searchHistory',{q});S.historyItems=Array.isArray(data&&data.items)?data.items:Array.isArray(data)?data:[];renderHistoryResults();setStatus('history-message',`查詢完成：${S.historyItems.length} 筆`,S.historyItems.length?'ok':'warn')}catch(e){console.error(e);setStatus('history-message',`查詢失敗：${e.message}`,'error')}finally{S.historyLoading=false}}
-function renderHistoryResults(){const root=$('history-results');root.innerHTML='';if(S.historyItems.length===0){const p=document.createElement('p');p.className='muted';p.textContent='尚無查詢結果';root.appendChild(p);return}S.historyItems.forEach(d=>{const card=document.createElement('article');card.className='doc-card';const main=document.createElement('div');main.className='doc-main';const left=document.createElement('div');const id=document.createElement('div');id.className='muted';id.textContent=nt(d.docId);const title=document.createElement('div');title.className='doc-title';title.textContent=nt(d.title)||'未命名提案';left.append(id,title);const right=document.createElement('div');right.className='muted';right.style.textAlign='right';right.textContent=fmt(d.createdAt)+'\n'+(nt(d.status)||'ACTIVE');main.append(left,right);const badges=document.createElement('div');badges.className='badge-row';['品項 '+(d.itemCount??0),'總數 '+(d.totalQty??0)].forEach(t=>{const s=document.createElement('span');s.className='badge';s.textContent=t;badges.appendChild(s)});card.append(main,badges);card.onclick=()=>loadHistoryDetail(d.docId);root.appendChild(card)})}
+
+function renderHistoryResults() {
+  const root = $('history-results');
+  root.innerHTML = '';
+  
+  if (S.historyItems.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = '暫無查詢結果';
+    root.appendChild(p);
+    return;
+  }
+
+  S.historyItems.forEach(d => {
+    const card = document.createElement('article');
+    card.className = 'doc-card';
+    
+    // 主內容區
+    const main = document.createElement('div');
+    main.className = 'doc-main';
+    
+    // 左側資訊
+    const left = document.createElement('div');
+    const id = document.createElement('div');
+    id.className = 'muted';
+    id.textContent = nt(d.docId);
+    
+    const title = document.createElement('div');
+    title.className = 'doc-title';
+    title.textContent = nt(d.title) || '未命名提案';
+
+    // --- 新增：備註顯示邏輯 ---
+    const note = document.createElement('div');
+    note.className = 'muted';
+    note.style.marginTop = '4px';
+    note.style.color = 'var(--amber)'; // 使用警告色標註，或用 var(--muted)
+    note.textContent = d.note ? `備註：${d.note}` : ''; 
+    // ----------------------
+
+    left.append(id, title, note); // 將 note 加入左側區塊
+
+    // 右側日期狀態
+    const right = document.createElement('div');
+    right.className = 'muted';
+    right.style.textAlign = 'right';
+    right.textContent = fmt(d.createdAt) + '\n' + (nt(d.status) || 'ACTIVE');
+    
+    main.append(left, right);
+
+    // 底部 Badge
+    const badges = document.createElement('div');
+    badges.className = 'badge-row';
+    [`品項 ${d.itemCount ?? 0}`, `總數 ${d.totalQty ?? 0}`].forEach(t => {
+      const s = document.createElement('span');
+      s.className = 'badge';
+      s.textContent = t;
+      badges.appendChild(s);
+    });
+
+    card.append(main, badges);
+    card.onclick = () => loadHistoryDetail(d.docId);
+    root.appendChild(card);
+  });
+}
+
 async function loadHistoryDetail(docId){docId=nt(docId);if(!docId||S.detailLoading)return;S.detailLoading=true;try{const d=await apiRequest('getProposalDetail',{docId});renderHistoryDetail(d);$('detail-modal').classList.remove('hidden')}catch(e){setStatus('history-message',`載入明細失敗：${e.message}`,'error')}finally{S.detailLoading=false}}
 function renderHistoryDetail(d){setText('detail-doc-id',d&&d.docId?d.docId:'單據明細');setText('detail-summary',[(d&&d.title)||'未命名提案',fmt(d&&d.createdAt),d&&d.status].filter(Boolean).join('｜'));const root=$('detail-items');root.innerHTML='';const items=Array.isArray(d&&d.items)?d.items:[];items.forEach(i=>{const row=document.createElement('div');row.className='detail-item';const left=document.createElement('div');const n=document.createElement('strong');n.textContent=nt(i.name);const m=document.createElement('div');m.className='muted';m.textContent=`${nt(i.itemId)}｜${nt(i.barcode)}`;left.append(n,m);const q=document.createElement('span');q.className='badge';q.textContent='x '+(i.qty??0);row.append(left,q);root.appendChild(row)})}
 async function detectCameras(){const cams=await Html5Qrcode.getCameras();S.cameras=Array.isArray(cams)?cams:[];setText('camera-diagnostic',`cameraCount=${S.cameras.length}\n`+S.cameras.map((c,i)=>`${i+1}. ${c.label||'(未命名)'}`).join('\n'));return S.cameras}
