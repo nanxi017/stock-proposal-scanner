@@ -1,9 +1,9 @@
 /*
 【目的】
-- 核心理由：GitHub Pages 前端穩定對接 GAS API，並以 cameraId fallback 修復黑框/找不到相機/不能停止問題。
-- 權責邊界：[負責]前端輸入管線、MasterData 快取、Scanner 裝置選擇與生命週期；[不負責]後端 GAS 與實體相機/瀏覽器權限。
-- MWE：設定 CONFIG.API_URL / APP_KEY 後部署；按「檢查相機」可列出設備；按「啟動相機」會依 cameraId → facingMode fallback 啟動。
-- 致命錯誤邊界：相機啟動 race、stop cleanup、API timeout、Null DOM、重複掃描已防護；風險受控。
+- 核心理由：GitHub Pages 前端穩定對接 GAS API，並修復 scanner 黑框：先顯示 reader、等待 layout、啟動 stream、驗證 video frame。
+- 權責邊界：[負責]前端輸入管線、MasterData 快取、Scanner 裝置選擇/畫面驗證/生命週期；[不負責]後端 GAS、實體相機、瀏覽器權限與裝置驅動。
+- MWE：設定 CONFIG.API_URL / APP_KEY 後部署；按「檢查相機」→「啟動相機」→「檢查畫面」。
+- 致命錯誤邊界：黑框、相機啟動 race、stop cleanup、API timeout、Null DOM、重複掃描已防護；風險受控。
 */
 
 const CONFIG = {
@@ -13,7 +13,8 @@ const CONFIG = {
   CACHE_KEY_VERSION: 'proposal_sys_version',
   CACHE_KEY_DATA: 'proposal_sys_master_data',
   API_TIMEOUT_MS: 15000,
-  SCAN_DEBOUNCE_MS: 1500
+  SCAN_DEBOUNCE_MS: 1500,
+  VIDEO_READY_TIMEOUT_MS: 4500
 };
 
 const ScannerState = Object.freeze({ IDLE:'IDLE', STARTING:'STARTING', RUNNING:'RUNNING', STOPPING:'STOPPING', ERROR:'ERROR' });
@@ -24,7 +25,7 @@ const state = {
   lastScanText: '', lastScanAt: 0,
   choices: [], pendingQty: 1,
   submitting: false, syncing: false,
-  cameras: [], selectedCameraId: ''
+  cameras: [], selectedCameraId: '', lastStartMode: ''
 };
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,75 @@ function setStatus(id, message, type) {
 }
 function normalizeText(value) { return value === null || value === undefined ? '' : String(value).trim(); }
 function parsePositiveInt(value, fallback = 1) { const n = Number(value); return (!Number.isFinite(n) || n <= 0) ? fallback : Math.floor(n); }
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function nextFrame() { return new Promise((resolve) => requestAnimationFrame(() => resolve())); }
+async function waitLayoutReady(frames = 3) { for (let i = 0; i < frames; i++) await nextFrame(); }
+
+function showReader() {
+  const wrap = $('reader-wrap');
+  const reader = $('reader');
+  if (wrap) wrap.classList.add('active');
+  if (reader) reader.style.display = 'block';
+}
+function hideReader() {
+  const wrap = $('reader-wrap');
+  if (wrap) wrap.classList.remove('active');
+}
+function resetReaderDom() {
+  const reader = $('reader');
+  if (reader) reader.innerHTML = '';
+}
+
+function getVideoDiagnostics() {
+  const wrap = $('reader-wrap');
+  const reader = $('reader');
+  const video = document.querySelector('#reader video');
+  return {
+    wrapActive: Boolean(wrap && wrap.classList.contains('active')),
+    wrapRect: wrap ? `${Math.round(wrap.getBoundingClientRect().width)}x${Math.round(wrap.getBoundingClientRect().height)}` : 'none',
+    readerRect: reader ? `${Math.round(reader.getBoundingClientRect().width)}x${Math.round(reader.getBoundingClientRect().height)}` : 'none',
+    videoExists: Boolean(video),
+    videoRect: video ? `${Math.round(video.getBoundingClientRect().width)}x${Math.round(video.getBoundingClientRect().height)}` : 'none',
+    srcObject: Boolean(video && video.srcObject),
+    videoWidth: video ? video.videoWidth : 0,
+    videoHeight: video ? video.videoHeight : 0,
+    readyState: video ? video.readyState : -1,
+    paused: video ? video.paused : true,
+    muted: video ? video.muted : false,
+    playsInline: video ? video.playsInline : false
+  };
+}
+function formatVideoDiagnostics() {
+  const d = getVideoDiagnostics();
+  return [
+    `wrapActive=${d.wrapActive}`,
+    `wrapRect=${d.wrapRect}`,
+    `readerRect=${d.readerRect}`,
+    `videoExists=${d.videoExists}`,
+    `videoRect=${d.videoRect}`,
+    `srcObject=${d.srcObject}`,
+    `videoSize=${d.videoWidth}x${d.videoHeight}`,
+    `readyState=${d.readyState}`,
+    `paused=${d.paused}`,
+    `muted=${d.muted}`,
+    `playsInline=${d.playsInline}`
+  ].join('\n');
+}
+async function waitVideoReady(timeoutMs = CONFIG.VIDEO_READY_TIMEOUT_MS) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const video = document.querySelector('#reader video');
+    if (video) {
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      video.muted = true;
+      try { await video.play(); } catch (_) {}
+      if (video.srcObject && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) return true;
+    }
+    await sleep(120);
+  }
+  return false;
+}
 
 function apiRequest(action, payload = {}) {
   const body = { action, appKey: CONFIG.APP_KEY, payload };
@@ -186,12 +256,11 @@ function renderChoices() {
 
 function setScannerState(next, message, type) {
   state.scannerState = next;
-  const startBtn = $('btn-start'), stopBtn = $('btn-stop'), wrap = $('reader-wrap');
+  const startBtn = $('btn-start'), stopBtn = $('btn-stop');
   const busy = next === ScannerState.STARTING || next === ScannerState.STOPPING;
   const running = next === ScannerState.RUNNING;
   if (startBtn) startBtn.disabled = busy || running;
   if (stopBtn) stopBtn.disabled = !(state.scanner || busy || running || next === ScannerState.ERROR);
-  if (wrap) wrap.classList.toggle('active', Boolean(state.scanner));
   setStatus('scanner-status', message || next, type || (next === ScannerState.ERROR ? 'error' : next === ScannerState.IDLE ? 'warn' : 'ok'));
 }
 
@@ -200,7 +269,6 @@ function getFormatsToSupport() {
   const f = Html5QrcodeSupportedFormats;
   return [f.QR_CODE, f.CODE_128, f.CODE_39, f.EAN_13, f.EAN_8, f.UPC_A, f.UPC_E].filter((x) => x !== undefined);
 }
-
 async function detectCameras() {
   if (typeof Html5Qrcode === 'undefined') throw new Error('html5-qrcode 尚未載入');
   const cameras = await Html5Qrcode.getCameras();
@@ -209,13 +277,11 @@ async function detectCameras() {
   renderCameraDiagnostic();
   return state.cameras;
 }
-
 function chooseCameraId(cameras) {
   if (!Array.isArray(cameras) || cameras.length === 0) return '';
   const rear = cameras.find((c) => /back|rear|environment|後|背/i.test(normalizeText(c.label)));
   return (rear || cameras[0]).id || '';
 }
-
 function renderCameraDiagnostic(extra) {
   const lines = [];
   lines.push(`secureContext=${String(window.isSecureContext)}`);
@@ -224,17 +290,22 @@ function renderCameraDiagnostic(extra) {
   lines.push(`cameraCount=${state.cameras.length}`);
   state.cameras.forEach((c, i) => lines.push(`${i+1}. ${c.label || '(未授權前可能無名稱)'} | ${c.id ? c.id.slice(0, 12) + '...' : '(no id)'}`));
   if (state.selectedCameraId) lines.push(`selected=${state.selectedCameraId.slice(0, 12)}...`);
+  if (state.lastStartMode) lines.push(`startMode=${state.lastStartMode}`);
+  lines.push(formatVideoDiagnostics());
   if (extra) lines.push(extra);
   setText('camera-diagnostic', lines.join('\n'));
 }
 
 async function cleanupScanner() {
-  if (!state.scanner) return;
-  try { await state.scanner.stop(); } catch (error) { console.warn('[SCANNER_STOP_WARN]', error); }
-  try { await state.scanner.clear(); } catch (error) { console.warn('[SCANNER_CLEAR_WARN]', error); }
+  if (state.scanner) {
+    try { await state.scanner.stop(); } catch (error) { console.warn('[SCANNER_STOP_WARN]', error); }
+    try { await state.scanner.clear(); } catch (error) { console.warn('[SCANNER_CLEAR_WARN]', error); }
+  }
   state.scanner = null;
+  state.lastStartMode = '';
+  resetReaderDom();
+  hideReader();
 }
-
 function scannerConfig() {
   const formatsToSupport = getFormatsToSupport();
   const config = {
@@ -249,7 +320,6 @@ function scannerConfig() {
   if (formatsToSupport && formatsToSupport.length > 0) config.formatsToSupport = formatsToSupport;
   return config;
 }
-
 function onScanSuccess(decodedText) {
   const code = normalizeText(decodedText);
   const now = Date.now();
@@ -264,8 +334,24 @@ function onScanSuccess(decodedText) {
 }
 
 async function tryStartWithCameraConfig(cameraConfig, label) {
+  showReader();
+  resetReaderDom();
+  await waitLayoutReady(4);
+  const reader = $('reader');
+  const rect = reader ? reader.getBoundingClientRect() : { width:0, height:0 };
+  if (!reader || rect.width < 120 || rect.height < 120) {
+    throw new Error(`reader 容器尺寸不足：${Math.round(rect.width)}x${Math.round(rect.height)}`);
+  }
   state.scanner = new Html5Qrcode('reader');
   await state.scanner.start(cameraConfig, scannerConfig(), onScanSuccess, () => {});
+
+  const videoReady = await waitVideoReady(CONFIG.VIDEO_READY_TIMEOUT_MS);
+  renderCameraDiagnostic(`videoReady=${videoReady}`);
+  if (!videoReady) {
+    throw new Error(`相機已啟動但 video 無有效畫面：${label}\n${formatVideoDiagnostics()}`);
+  }
+  state.lastStartMode = label;
+  renderCameraDiagnostic(`videoReady=true`);
   setScannerState(ScannerState.RUNNING, `相機已啟動：${label}`, 'ok');
 }
 
@@ -277,6 +363,8 @@ async function startScanner() {
 
   setScannerState(ScannerState.STARTING, '正在啟動相機...', 'warn');
   await cleanupScanner();
+  showReader();
+  await waitLayoutReady(4);
 
   const attempts = [];
   try {
@@ -290,9 +378,9 @@ async function startScanner() {
     for (const attempt of attempts) {
       try {
         await cleanupScanner();
+        showReader();
         setScannerState(ScannerState.STARTING, `嘗試啟動：${attempt.label}`, 'warn');
         await tryStartWithCameraConfig(attempt.config, attempt.label);
-        renderCameraDiagnostic(`startMode=${attempt.label}`);
         return;
       } catch (error) {
         lastError = error;
@@ -315,19 +403,15 @@ async function stopScanner() {
     setScannerState(ScannerState.STOPPING, '正在停止相機...', 'warn');
     await cleanupScanner();
     setScannerState(ScannerState.IDLE, '相機已停止', 'ok');
+    renderCameraDiagnostic('stopped=true');
   } catch (error) {
     console.error('[STOP_SCANNER_ERROR]', error);
     await cleanupScanner();
     setScannerState(ScannerState.ERROR, `停止相機失敗：${error.message || error}`, 'error');
   }
 }
-
-function pauseScanner() {
-  try { if (state.scanner && state.scanner.getState && state.scanner.getState() === 2) state.scanner.pause(); } catch (_) {}
-}
-function resumeScanner() {
-  try { if (state.scanner && state.scanner.getState && state.scanner.getState() === 3) state.scanner.resume(); } catch (_) {}
-}
+function pauseScanner() { try { if (state.scanner && state.scanner.getState && state.scanner.getState() === 2) state.scanner.pause(); } catch (_) {} }
+function resumeScanner() { try { if (state.scanner && state.scanner.getState && state.scanner.getState() === 3) state.scanner.resume(); } catch (_) {} }
 function normalizeCameraError(error) {
   const message = error && error.message ? error.message : String(error);
   if (message.includes('NotAllowedError')) return '使用者未允許相機權限，或瀏覽器封鎖相機';
@@ -368,6 +452,7 @@ function clearDraft() { state.draftItems = []; renderDraft(); setStatus('message
 function bindEvents() {
   $('btn-start')?.addEventListener('click', startScanner);
   $('btn-stop')?.addEventListener('click', stopScanner);
+  $('btn-video')?.addEventListener('click', () => renderCameraDiagnostic('manualVideoCheck=true'));
   $('btn-cameras')?.addEventListener('click', async () => {
     try { await detectCameras(); setStatus('scanner-status', `相機檢查完成：${state.cameras.length} 個裝置`, state.cameras.length ? 'ok' : 'error'); }
     catch (e) { setStatus('scanner-status', `相機檢查失敗：${normalizeCameraError(e)}`, 'error'); renderCameraDiagnostic(`detectError=${e.message || e}`); }
@@ -389,3 +474,4 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+  
