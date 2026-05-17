@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>提案單前端</title>
+  <title>提案單前端 v2</title>
   <script src="https://unpkg.com/html5-qrcode" defer></script>
   <link rel="preconnect" href="https://script.google.com">
   <style>
@@ -32,13 +32,13 @@
     .status.error { color:var(--red); }
     .status.warn { color:var(--amber); }
     .muted { color:var(--muted); font-size:15px; }
+    .diagnostic { margin-top:8px; padding:10px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; color:var(--muted); font-size:14px; white-space:pre-wrap; word-break:break-word; }
     .reader-wrap { margin-top:12px; border-radius:16px; overflow:hidden; background:#000; border:1px solid var(--line); display:none; }
     .reader-wrap.active { display:block; }
     #reader { width:100%; min-height:280px; }
     .item-card, .choice-card { border:1px solid var(--line); border-radius:14px; background:#fff; margin-top:10px; padding:12px; }
     .item-card { display:grid; grid-template-columns:1fr 110px auto; gap:10px; align-items:start; }
     .item-name { font-size:19px; font-weight:900; }
-    .badge-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
     .badge { border-radius:999px; background:#eff6ff; color:#1e40af; font-size:15px; font-weight:800; padding:4px 10px; }
     .modal-backdrop { position:fixed; inset:0; z-index:999; background:rgba(15,23,42,.55); display:flex; justify-content:center; align-items:flex-start; padding:24px 12px; }
     .modal-panel { width:min(100%, 680px); max-height:88vh; overflow:auto; background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,.25); padding:16px; }
@@ -59,7 +59,7 @@
 <body>
 <main>
   <section class="panel">
-    <h1>掃碼需求提案單</h1>
+    <h1>掃碼需求提案單 v2</h1>
     <p class="muted">GitHub Pages 前端；後端使用 GAS Web App API。</p>
   </section>
 
@@ -79,8 +79,10 @@
       <button id="btn-start" type="button">啟動相機</button>
       <button id="btn-stop" type="button" class="secondary" disabled>停止相機</button>
       <button id="btn-sync" type="button" class="ghost">同步主檔</button>
+      <button id="btn-cameras" type="button" class="ghost">檢查相機</button>
     </div>
     <p id="scanner-status" class="status warn">相機尚未啟動</p>
+    <div id="camera-diagnostic" class="diagnostic">尚未檢查相機。</div>
     <div id="reader-wrap" class="reader-wrap"><div id="reader"></div></div>
   </section>
 
@@ -124,6 +126,6 @@
   </section>
 </div>
 
-<script src="app.js?v=20260517-frontend-fix"></script>
+<script src="app.js?v=20260517-scanner-v2"></script>
 </body>
 </html>
