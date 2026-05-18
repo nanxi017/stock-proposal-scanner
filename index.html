@@ -1,13 +1,19 @@
+<!--
+【目的】
+- 核心理由：提供需求提案單前端 UI，並在主檔同步完成前以全頁遮罩鎖定操作。
+- 權責邊界：[負責]畫面結構、樣式、初始化遮罩 DOM [不負責]API 呼叫、主檔同步、業務資料處理。
+- MWE：開啟頁面時顯示 #app-overlay；app.js 同步成功後呼叫 hideAppOverlay() 隱藏；同步失敗時維持遮罩。
+- 致命錯誤邊界：純 HTML/CSS，無 Race Condition；風險受控。
+-->
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>需求提案單</title>
+<title>需求提案單系統</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 
 <style>
-  /* --- 1. 核心變數與基礎設定 --- */
   :root {
     --bg: #f6f8fb;
     --card: #fff;
@@ -40,7 +46,6 @@
     padding: 14px;
   }
 
-  /* --- 2. 佈局組件 --- */
   .panel {
     background: var(--card);
     border: 1px solid var(--line);
@@ -60,7 +65,6 @@
     font-size: 22px;
   }
 
-  /* --- 3. 表單與輸入元件 --- */
   label {
     display: block;
     font-weight: 800;
@@ -100,7 +104,6 @@
     cursor: not-allowed;
   }
 
-  /* 按鈕變體 */
   .ghost {
     background: #eef2ff;
     color: #1e40af;
@@ -114,7 +117,6 @@
     background: var(--red);
   }
 
-  /* --- 4. 導覽與頁籤 --- */
   .tabs,
   .button-row,
   .advanced-row {
@@ -134,7 +136,6 @@
     color: #fff;
   }
 
-  /* --- 5. 狀態顯示與網格排版 --- */
   .row,
   .search-row {
     display: grid;
@@ -168,24 +169,11 @@
     font-size: 15px;
   }
 
-  /* --- 6. 掃描器相關 --- */
   .system-strip {
     padding: 10px 12px;
     background: #f8fafc;
     border: 1px solid var(--line);
     border-radius: 14px;
-  }
-
-  .diagnostic {
-    margin-top: 8px;
-    padding: 10px;
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    color: var(--muted);
-    font-size: 14px;
-    white-space: pre-wrap;
-    word-break: break-word;
   }
 
   .reader-wrap {
@@ -222,9 +210,6 @@
     border: 1px solid var(--line);
   }
 
-  /* --- 7. 卡片元件 (Card Components) --- */
-  
-  /* 【修改重點】草稿品項卡片：改為醒目的藍色風格 */
   .item-card {
     display: grid;
     grid-template-columns: 1fr 110px auto;
@@ -232,9 +217,9 @@
     margin-top: 10px;
     padding: 12px;
     border-radius: 14px;
-    background: #f0f7ff;                /* 淺藍色背景 */
-    border: 2px solid var(--blue);      /* 醒目藍色粗邊框 */
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15); /* 藍色系陰影 */
+    background: #f0f7ff;
+    border: 2px solid var(--blue);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
     transition: transform 0.1s ease;
   }
 
@@ -242,7 +227,6 @@
     transform: scale(0.99);
   }
 
-  /* 一般選擇卡片與歷史紀錄卡片 */
   .choice-card,
   .doc-card {
     border: 1px solid var(--line);
@@ -280,7 +264,6 @@
     padding: 4px 10px;
   }
 
-  /* --- 8. 詳情與彈窗 (Modals) --- */
   .doc-main {
     display: flex;
     justify-content: space-between;
@@ -330,7 +313,86 @@
     display: none !important;
   }
 
-  /* --- 9. 手機版響應式優化 (Mobile RWD) --- */
+  .loading-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid var(--line);
+    border-top: 3px solid var(--blue);
+    border-radius: 50%;
+    margin: 0 auto 10px;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .doc-card:active {
+    opacity: 0.6;
+    background: var(--bg);
+  }
+
+  /*
+  【目的】
+  - 核心理由：主檔同步完成前鎖住整個 Web UI，避免半初始化狀態下誤操作。
+  - 權責邊界：[負責]遮罩互動鎖定與狀態提示 [不負責]後端同步邏輯與資料修復。
+  - MWE：頁面載入時顯示遮罩；同步成功後由 app.js 隱藏；同步失敗時維持遮罩。
+  - 致命錯誤邊界：純 UI 鎖定，無共享狀態變更；風險受控。
+  */
+  .app-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(3px);
+  }
+
+  .app-overlay.hidden {
+    display: none !important;
+  }
+
+  .app-overlay-card {
+    width: min(100%, 420px);
+    padding: 28px 22px;
+    border-radius: 20px;
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .28);
+    text-align: center;
+  }
+
+  .app-overlay-card h2 {
+    margin: 8px 0 8px;
+    font-size: 24px;
+  }
+
+  .app-overlay-card p {
+    margin: 0;
+    color: var(--muted);
+    font-weight: 800;
+  }
+
+  .app-overlay.error .loading-spinner {
+    display: none;
+  }
+
+  .app-overlay.error .app-overlay-card {
+    border: 2px solid var(--red);
+  }
+
+  .app-overlay.error h2 {
+    color: var(--red);
+  }
+
   @media (max-width: 640px) {
     main {
       padding: 10px;
@@ -369,108 +431,157 @@
       display: block;
     }
   }
-/*
-- 核心理由：透過動態旋轉圖示告知程式未死鎖
-*/
-
-/* 載入中旋轉動畫 */
-.loading-spinner {
-  width: 30px;
-  height: 30px;
-  border: 3px solid var(--line);
-  border-top: 3px solid var(--blue);
-  border-radius: 50%;
-  margin: 0 auto 10px;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 點擊後的卡片回饋 */
-.doc-card:active {
-  opacity: 0.6;
-  background: var(--bg);
-}
 </style>
-  
 </head>
+
 <body>
-<main>
-<section class="panel">
-  <h1>需求提案單</h1>
-  <p class="muted">單號為唯一追蹤依據；提案標題可選填。</p>
-  <nav class="tabs" aria-label="主功能分頁">
-    <button id="tab-proposal" class="tab-btn active" type="button">需求提案單</button>
-    <button id="tab-history" class="tab-btn" type="button">歷史單據查詢</button>
-  </nav>
-  <div class="system-strip" style="margin-top:12px">
-    <div id="system-status" class="status warn" style="margin:0">系統尚未同步主檔</div>
-
+<div id="app-overlay" class="app-overlay">
+  <div class="app-overlay-card" role="status" aria-live="polite">
+    <div class="loading-spinner" id="app-overlay-spinner"></div>
+    <h2 id="app-overlay-title">系統初始化中</h2>
+    <p id="app-overlay-message">主檔同步中，請稍候...</p>
   </div>
-</section>
+</div>
 
-<section id="page-proposal" class="page">
+<main>
   <section class="panel">
-    <h2>提案基本資料</h2>
-    <label>提案標題（選填）<input id="proposal-title" placeholder="例：門市補貨"></label>
-    <p class="muted">未填標題時，送出後將以系統單號追蹤。</p>
-    <label>備註 (可選)
-    <input id="proposal-note" placeholder="例如：急件、特定庫位、收貨人姓名...">
-    </label>
-  </section>
-  
-  <section class="panel camera-panel compact">
-    <h2>相機輸入</h2>
-    <div class="button-row">
-      <button id="btn-start" type="button">啟動相機</button>
-      <button id="btn-stop" type="button" class="secondary" disabled>停止相機</button>
-    </div>
-    <div id="reader-wrap" class="reader-wrap"><div id="reader"></div></div>
-    <div class="scanner-result">
-      <div class="muted">掃描狀態</div>
-      <div id="scanner-status" class="status warn">相機尚未啟動</div>
+    <h1>需求提案單</h1>
+    <p class="muted">單號為唯一追蹤依據；提案標題可選填。</p>
+
+    <nav class="tabs" aria-label="主功能分頁">
+      <button id="tab-proposal" class="tab-btn active" type="button">需求提案單</button>
+      <button id="tab-history" class="tab-btn" type="button">歷史單據查詢</button>
+    </nav>
+
+    <div class="system-strip" style="margin-top:12px">
+      <div id="system-status" class="status warn" style="margin:0">系統尚未同步主檔</div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>手動加入</h2>
-    <div class="row">
-      <label>條碼 / 品名 / 品項ID<input id="manual-query" type="search" placeholder="輸入條碼或品名關鍵字"></label>
-      <label>數量<input id="manual-qty" type="number" min="1" value="1"></label>
-      <button id="btn-add" type="button">查詢 / 加入</button>
-    </div>
-    <div class="muted" style="margin-top:10px">手動狀態</div>
-    <p id="manual-status" class="status"></p>
+  <section id="page-proposal" class="page">
+    <section class="panel">
+      <h2>提案基本資料</h2>
+
+      <label>
+        提案標題（選填）
+        <input id="proposal-title" placeholder="例：門市補貨">
+      </label>
+
+      <p class="muted">未填標題時，送出後將以系統單號追蹤。</p>
+
+      <label>
+        備註（選填）
+        <input id="proposal-note" placeholder="例如：急件、特定庫位、收貨人姓名...">
+      </label>
+    </section>
+
+    <section class="panel camera-panel compact">
+      <h2>相機輸入</h2>
+
+      <div class="button-row">
+        <button id="btn-start" type="button">啟動相機</button>
+        <button id="btn-stop" type="button" class="secondary" disabled>停止相機</button>
+      </div>
+
+      <div id="reader-wrap" class="reader-wrap">
+        <div id="reader"></div>
+      </div>
+
+      <div class="scanner-result">
+        <div class="muted">掃描狀態</div>
+        <div id="scanner-status" class="status warn">相機尚未啟動</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>手動加入</h2>
+
+      <div class="row">
+        <label>
+          條碼 / 品名 / 品項ID
+          <input id="manual-query" type="search" placeholder="輸入條碼或品名關鍵字">
+        </label>
+
+        <label>
+          數量
+          <input id="manual-qty" type="number" min="1" value="1">
+        </label>
+
+        <button id="btn-add" type="button">查詢 / 加入</button>
+      </div>
+
+      <div class="muted" style="margin-top:10px">手動狀態</div>
+      <p id="manual-status" class="status"></p>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+        <h2 style="margin:0">草稿品項</h2>
+        <span id="total-badge" class="badge">品項 0｜總數 0</span>
+      </div>
+
+      <p id="submit-hint" class="muted">送出後將以系統單號追蹤。</p>
+
+      <div id="draft-list"></div>
+
+      <div class="button-row">
+        <button id="btn-submit" type="button">送出提案</button>
+        <button id="btn-clear" type="button" class="secondary">清空草稿</button>
+      </div>
+
+      <p id="submit-status" class="status"></p>
+    </section>
   </section>
 
-  <section class="panel">
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h2 style="margin:0">草稿品項</h2><span id="total-badge" class="badge">品項 0｜總數 0</span></div>
-    <p id="submit-hint" class="muted">送出後將以系統單號追蹤。</p>
-    <div id="draft-list"></div>
-    <div class="button-row"><button id="btn-submit" type="button">送出提案</button><br><br><br><button id="btn-clear" type="button" class="secondary">清空草稿</button></div>
-    <p id="submit-status" class="status"></p>
-  </section>
-</section>
+  <section id="page-history" class="page hidden">
+    <section class="panel">
+      <h2>歷史單據查詢</h2>
+      <p class="muted">本頁固定送出 YYYY-MM-DD。</p>
 
-<section id="page-history" class="page hidden">
-  <section class="panel">
-    <h2>歷史單據查詢</h2>
-    <p class="muted">本頁固定送出 YYYY-MM-DD。</p>
-    <div class="search-row">
-      <label>單據日期<input id="history-date" type="date"></label>
-      <button id="btn-history-search" type="button">查詢此日期</button>
-      <button id="btn-history-today" type="button" class="ghost">今日單據</button>
-    </div>
-    <p id="history-message" class="status"></p>
-    <div id="history-results"></div>
+      <div class="search-row">
+        <label>
+          單據日期
+          <input id="history-date" type="date">
+        </label>
+
+        <button id="btn-history-search" type="button">查詢此日期</button>
+        <button id="btn-history-today" type="button" class="ghost">今日單據</button>
+      </div>
+
+      <p id="history-message" class="status"></p>
+      <div id="history-results"></div>
+    </section>
   </section>
-</section>
 </main>
 
-<div id="picker" class="modal-backdrop hidden"><section class="modal-panel"><div class="modal-header"><div><h2 style="margin:0">選擇商品</h2><p class="muted" style="margin:4px 0 0">找到多筆，請點選一筆加入草稿。</p></div><button id="btn-close-picker" type="button" class="ghost">關閉</button></div><div id="choice-list"></div></section></div>
-<div id="detail-modal" class="modal-backdrop hidden"><section class="modal-panel"><div class="modal-header"><div><h2 id="detail-doc-id" style="margin:0">單據明細</h2><p id="detail-summary" class="muted" style="margin:4px 0 0"></p></div><button id="btn-close-detail" type="button" class="ghost">關閉</button></div><div id="detail-items"></div></section></div>
-<script src="app.js?v=20260517-ui-layout-v6"></script>
-</body></html>
+<div id="picker" class="modal-backdrop hidden">
+  <section class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0">選擇品項</h2>
+        <p class="muted" style="margin:4px 0 0">找到多筆，請點選一筆加入草稿。</p>
+      </div>
+      <button id="btn-close-picker" type="button" class="ghost">關閉</button>
+    </div>
+
+    <div id="choice-list"></div>
+  </section>
+</div>
+
+<div id="detail-modal" class="modal-backdrop hidden">
+  <section class="modal-panel">
+    <div class="modal-header">
+      <div>
+        <h2 id="detail-doc-id" style="margin:0">單據明細</h2>
+        <p id="detail-summary" class="muted" style="margin:4px 0 0"></p>
+      </div>
+      <button id="btn-close-detail" type="button" class="ghost">關閉</button>
+    </div>
+
+    <div id="detail-items"></div>
+  </section>
+</div>
+
+<script src="app.js?v=20260518-init-overlay-v1"></script>
+</body>
+</html>
