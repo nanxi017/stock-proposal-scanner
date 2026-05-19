@@ -29,7 +29,9 @@ const S = {
   historyItems: [],     // 歷史清單
   historyLoading: false,
   detailLoading: false,
-  cameras: []           // 相機列表
+  cameras: [],          // 相機列表
+  currentCameraIndex: -1, // 目前鏡頭索引；-1 代表使用 facingMode fallback 或尚未啟動
+  cameraBusy: false      // 相機生命週期鎖：防止 start/stop/switch 交錯造成鏡頭鎖死
 };
 
 // --- 2. 核心工具函式 ---
@@ -607,84 +609,119 @@ function renderHistoryDetail(d) {
 }
 
 // --- 8. 掃描器控制 ---
+/**
+ * 【目的】
+ * - 核心理由：提供手機掃碼必要的鏡頭逃生機制，避免瀏覽器預設鎖在前鏡頭導致無法掃碼。
+ * - 權責邊界：[負責]相機偵測、啟動、停止、循環切換與 scanner instance 生命週期 [不負責]後端資料寫入、主檔解析、Sheet schema。
+ * - MWE：啟動相機後連按「切換鏡頭」只會序列化執行 stop -> start(nextCameraId)，不會產生多個 scanner instance。
+ * - 致命錯誤邊界：已用 cameraBusy 作為前端互斥鎖防止 Race Condition；單執行緒 async interleave 風險受控。
+ */
 async function detectCameras() {
   try {
     const cams = await Html5Qrcode.getCameras();
     S.cameras = Array.isArray(cams) ? cams : [];
     return S.cameras;
   } catch (e) {
+    S.cameras = [];
     return [];
   }
 }
 
-async function startScanner() {
-  if (S.scanner) return;
+function cameraLabel(index) {
+  if (index < 0 || !S.cameras[index]) return '系統預設鏡頭';
 
+  const cam = S.cameras[index];
+  const label = nt(cam.label) || `鏡頭 ${index + 1}`;
+  return `${label}（${index + 1}/${S.cameras.length}）`;
+}
+
+function setCameraButtons() {
+  const active = !!S.scanner;
+  const busy = !!S.cameraBusy;
+
+  const startBtn = $('btn-start');
+  const stopBtn = $('btn-stop');
+  const switchBtn = $('btn-switch-camera');
+
+  if (startBtn) startBtn.disabled = busy || active;
+  if (stopBtn) stopBtn.disabled = busy || !active;
+
+  if (switchBtn) {
+    switchBtn.disabled = busy || !active;
+    switchBtn.textContent = busy ? '切換中...' : '切換鏡頭';
+  }
+}
+
+function pickInitialCameraIndex(cams) {
+  if (!Array.isArray(cams) || cams.length === 0) return -1;
+
+  if (S.currentCameraIndex >= 0 && S.currentCameraIndex < cams.length) {
+    return S.currentCameraIndex;
+  }
+
+  const rearIndex = cams.findIndex(c => /back|rear|environment/i.test(nt(c.label)));
+  return rearIndex >= 0 ? rearIndex : 0;
+}
+
+async function startScannerInternal(cameraId) {
   if (typeof Html5Qrcode === 'undefined') {
-    setStatus('scanner-status', '掃描模組未載入', 'error');
-    return;
+    throw new Error('掃描模組未載入');
+  }
+
+  const cams = await detectCameras();
+  let target = null;
+  let targetIndex = -1;
+
+  if (cameraId) {
+    targetIndex = cams.findIndex(c => c.id === cameraId);
+    target = cameraId;
+  } else {
+    targetIndex = pickInitialCameraIndex(cams);
+    target = targetIndex >= 0 ? cams[targetIndex].id : { facingMode: 'environment' };
   }
 
   if ($('reader-wrap')) {
     $('reader-wrap').classList.add('active');
   }
 
-  if ($('btn-start')) {
-    $('btn-start').disabled = true;
-  }
+  S.scanner = new Html5Qrcode('reader');
 
-  try {
-    const cams = await detectCameras();
+  await S.scanner.start(
+    target,
+    {
+      fps: 10,
+      qrbox: 250
+    },
+    (txt) => {
+      const code = nt(txt);
+      const now = Date.now();
 
-    const rear = cams.find(c => /back|rear|environment/i.test(nt(c.label)));
-    const id = (rear || cams[0] || {}).id;
+      if (
+        !code ||
+        (code === S.lastScanText && now - S.lastScanAt < CONFIG.SCAN_DEBOUNCE_MS)
+      ) {
+        return;
+      }
 
-    S.scanner = new Html5Qrcode('reader');
+      S.lastScanText = code;
+      S.lastScanAt = now;
 
-    await S.scanner.start(
-      id || { facingMode: 'environment' },
-      {
-        fps: 10,
-        qrbox: 250
-      },
-      (txt) => {
-        const code = nt(txt);
-        const now = Date.now();
+      if ($('manual-query')) {
+        $('manual-query').value = code;
+      }
 
-        if (
-          !code ||
-          (code === S.lastScanText && now - S.lastScanAt < CONFIG.SCAN_DEBOUNCE_MS)
-        ) {
-          return;
-        }
+      setStatus('scanner-status', `掃描成功：${code}`, 'ok');
 
-        S.lastScanText = code;
-        S.lastScanAt = now;
+      handleInput(code, 1, 'scanner');
+    },
+    () => {}
+  );
 
-        if ($('manual-query')) {
-          $('manual-query').value = code;
-        }
-
-        setStatus('scanner-status', `掃描成功：${code}`, 'ok');
-
-        handleInput(code, 1, 'scanner');
-      },
-      () => {}
-    );
-
-    if ($('btn-stop')) {
-      $('btn-stop').disabled = false;
-    }
-
-    setStatus('scanner-status', '相機運作中', 'ok');
-  } catch (e) {
-    await stopScanner();
-
-    setStatus('scanner-status', `啟動失敗：${e.message}`, 'error');
-  }
+  S.currentCameraIndex = targetIndex;
+  setStatus('scanner-status', `相機運作中：${cameraLabel(S.currentCameraIndex)}`, 'ok');
 }
 
-async function stopScanner() {
+async function stopScannerInternal() {
   if (S.scanner) {
     try {
       await S.scanner.stop();
@@ -697,16 +734,75 @@ async function stopScanner() {
   if ($('reader-wrap')) {
     $('reader-wrap').classList.remove('active');
   }
+}
 
-  if ($('btn-start')) {
-    $('btn-start').disabled = false;
+async function startScanner() {
+  if (S.scanner || S.cameraBusy) return;
+
+  S.cameraBusy = true;
+  setCameraButtons();
+
+  try {
+    await startScannerInternal();
+  } catch (e) {
+    await stopScannerInternal();
+    setStatus('scanner-status', `啟動失敗：${e.message}`, 'error');
+  } finally {
+    S.cameraBusy = false;
+    setCameraButtons();
+  }
+}
+
+async function stopScanner() {
+  if (S.cameraBusy) return;
+
+  S.cameraBusy = true;
+  setCameraButtons();
+
+  try {
+    await stopScannerInternal();
+    setStatus('scanner-status', '相機已關閉', 'warn');
+  } finally {
+    S.cameraBusy = false;
+    setCameraButtons();
+  }
+}
+
+async function switchCamera() {
+  if (S.cameraBusy) return;
+
+  if (!S.scanner) {
+    setStatus('scanner-status', '請先啟動相機後再切換鏡頭', 'warn');
+    setCameraButtons();
+    return;
   }
 
-  if ($('btn-stop')) {
-    $('btn-stop').disabled = true;
-  }
+  S.cameraBusy = true;
+  setCameraButtons();
 
-  setStatus('scanner-status', '相機已關閉', 'warn');
+  try {
+    const cams = await detectCameras();
+
+    if (cams.length === 0) {
+      throw new Error('找不到可切換的相機');
+    }
+
+    const baseIndex = S.currentCameraIndex >= 0 ? S.currentCameraIndex : 0;
+    const nextIndex = (baseIndex + 1) % cams.length;
+    const nextCameraId = cams[nextIndex].id;
+
+    setStatus('scanner-status', `切換鏡頭中：${cameraLabel(nextIndex)}`, 'warn');
+
+    await stopScannerInternal();
+    S.currentCameraIndex = nextIndex;
+    await startScannerInternal(nextCameraId);
+  } catch (e) {
+    await stopScannerInternal();
+    setStatus('scanner-status', `切換失敗：${e.message}`, 'error');
+  } finally {
+    S.cameraBusy = false;
+    setCameraButtons();
+  }
 }
 
 // --- 9. 提交提案 ---
@@ -820,6 +916,7 @@ function bind() {
 
   saferBind('btn-start', 'onclick', startScanner);
   saferBind('btn-stop', 'onclick', stopScanner);
+  saferBind('btn-switch-camera', 'onclick', switchCamera);
 
   saferBind('btn-close-picker', 'onclick', () => {
     if ($('picker')) {
