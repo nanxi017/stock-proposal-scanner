@@ -690,7 +690,7 @@ async function startScannerInternal(cameraId) {
     target,
     {
       fps: 10,
-      qrbox: 175
+      qrbox: 125
     },
     (txt) => {
       const code = nt(txt);
