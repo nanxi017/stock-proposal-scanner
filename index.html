@@ -183,7 +183,10 @@
     overflow: hidden;
     background: #000;
     border: 1px solid var(--line);
-    min-height: 260px;
+    min-height: 0 !important;
+    height: 220px !important;
+    max-height: 220px !important;
+    overflow: hidden !important;
   }
 
   .reader-wrap.active {
@@ -191,16 +194,19 @@
   }
 
   #reader {
-    width: 100%;
-    min-height: 260px;
+    min-height: 0 !important;
+    height: 220px !important;
+    max-height: 220px !important;
+    overflow: hidden !important;
   }
 
   
   #reader video {
     width: 100% !important;
-    height: auto !important;
-    min-height: 230px;
-    object-fit: cover;
+    height: 220px !important;
+    max-height: 220px !important;
+    min-height: 0 !important;
+    object-fit: cover !important;
   }
 
   .scanner-result {
@@ -421,11 +427,11 @@
     }
 
     #reader {
-      min-height: 260px;
+      min-height: 220px;
     }
 
     #reader video {
-      min-height: 230px;
+      min-height: 220px;
     }
 
     .doc-main {
