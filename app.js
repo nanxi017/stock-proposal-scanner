@@ -13,7 +13,7 @@ const CONFIG = {
   CACHE_KEY_VERSION: 'proposal_sys_version',
   CACHE_KEY_DATA: 'proposal_sys_master_data',
   API_TIMEOUT_MS: 15000,
-  SCAN_DEBOUNCE_MS: 1500
+  SCAN_DEBOUNCE_MS: 2500
 };
 
 const S = {
