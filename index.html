@@ -465,6 +465,8 @@
 
   .workspace-mode {
     min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 12px;
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -472,8 +474,8 @@
   }
 
   .workspace-mode.hidden { display: none !important; }
-  .workspace .reader-wrap { display: block; margin-top: 0; height: min(34vh, 300px) !important; max-height: 300px !important; }
-  .workspace #reader, .workspace #reader video { height: min(34vh, 300px) !important; max-height: 300px !important; }
+  .workspace .reader-wrap { display: block; margin-top: 0; height: min(26vh, 240px) !important; max-height: 240px !important; }
+  .workspace #reader, .workspace #reader video { height: min(26vh, 240px) !important; max-height: 240px !important; }
   .workspace-camera-actions { display: flex; gap: 8px; margin-top: 10px; }
   .workspace-camera-actions button { flex: 1; }
 
