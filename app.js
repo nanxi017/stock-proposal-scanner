@@ -31,7 +31,11 @@ const S = {
   detailLoading: false,
   cameras: [],          // 相機列表
   currentCameraIndex: -1, // 目前鏡頭索引；-1 代表使用 facingMode fallback 或尚未啟動
-  cameraBusy: false      // 相機生命週期鎖：防止 start/stop/switch 交錯造成鏡頭鎖死
+  cameraBusy: false,     // 相機生命週期鎖：防止 start/stop/switch 交錯造成鏡頭鎖死
+  workspaceOpen: false,
+  workspaceMode: 'scan',
+  workspaceScrollY: 0,
+  workspaceTrigger: null
 };
 
 // --- 2. 核心工具函式 ---
@@ -59,6 +63,16 @@ function setStatus(id, m, type) {
   if (type === 'error') e.classList.add('error');
   if (type === 'warn') e.classList.add('warn');
   if (type === 'ok') e.style.color = 'var(--green)';
+
+  const mirrorId = id === 'scanner-status'
+    ? 'workspace-scanner-status'
+    : id === 'manual-status' ? 'workspace-manual-status' : '';
+  const mirror = mirrorId ? $(mirrorId) : null;
+  if (mirror) {
+    mirror.textContent = e.textContent;
+    mirror.className = e.className;
+    mirror.style.color = e.style.color;
+  }
 }
 
 /**
@@ -256,6 +270,7 @@ function resolveFromMaster(q0) {
 function addDraftItem(item, qty) {
   const n = pos(qty, 1);
   const found = S.draftItems.find(x => x.itemId === item.itemId);
+  const before = found ? found.qty : 0;
 
   if (found) {
     found.qty += n;
@@ -268,7 +283,9 @@ function addDraftItem(item, qty) {
     });
   }
 
+  const after = before + n;
   renderDraft();
+  return { before, after };
 }
 
 async function handleInput(q, qty, source = 'manual') {
@@ -289,11 +306,15 @@ async function handleInput(q, qty, source = 'manual') {
   }
 
   if (r.type === 'ONE') {
-    addDraftItem(r.item, qty);
-    setStatus(statusId, `已加入：${r.item.name}`, 'ok');
+    const change = addDraftItem(r.item, qty);
+    const changeText = change.before > 0
+      ? `數量 ${change.before} → ${change.after}`
+      : `數量 ${change.after}`;
+    setStatus(statusId, `已加入：${r.item.name}（${changeText}）`, 'ok');
 
-    if (source === 'manual' && $('manual-query')) {
-      $('manual-query').value = '';
+    if (source === 'manual') {
+      if ($('manual-query')) $('manual-query').value = '';
+      if ($('workspace-manual-query')) $('workspace-manual-query').value = '';
     }
 
     return;
@@ -301,13 +322,9 @@ async function handleInput(q, qty, source = 'manual') {
 
   S.pendingQty = pos(qty, 1);
   S.choices = r.items;
-
   renderChoices();
 
-  if ($('picker')) {
-    $('picker').classList.remove('hidden');
-  }
-
+  if ($('picker')) $('picker').classList.remove('hidden');
   setStatus(statusId, `找到 ${r.items.length} 筆相似品項`, 'warn');
 }
 
@@ -323,53 +340,43 @@ function updateSubmitHint() {
   );
 }
 
-function renderDraft() {
-  updateSubmitHint();
-
-  const root = $('draft-list');
+function renderDraftRoot(root) {
   if (!root) return;
-
   root.innerHTML = '';
 
   if (S.draftItems.length === 0) {
-    root.innerHTML = '<p class="muted">草稿清單為空</p>';
-    setText('total-badge', '品項 0｜總數 0');
+    root.innerHTML = '<p class="muted">尚未加入品項</p>';
     return;
   }
 
-  let total = 0;
-
   S.draftItems.forEach(i => {
-    total += i.qty;
-
     const c = document.createElement('article');
     c.className = 'item-card';
 
     const info = document.createElement('div');
-    info.innerHTML = `
-      <div class="item-name">${i.name}</div>
-      <div class="muted">${i.itemId}｜${i.barcode}</div>
-    `;
+    const name = document.createElement('div');
+    name.className = 'item-name';
+    name.textContent = i.name;
+    const meta = document.createElement('div');
+    meta.className = 'muted';
+    meta.textContent = `${i.itemId}｜${i.barcode}`;
+    info.append(name, meta);
 
     const lab = document.createElement('label');
     lab.textContent = '數量';
-
     const qtyInput = document.createElement('input');
     qtyInput.type = 'number';
     qtyInput.min = '1';
     qtyInput.value = i.qty;
-
     qtyInput.onchange = () => {
       i.qty = pos(qtyInput.value, 1);
       renderDraft();
     };
-
     lab.appendChild(qtyInput);
 
     const del = document.createElement('button');
     del.className = 'danger';
     del.textContent = '刪除';
-
     del.onclick = () => {
       S.draftItems = S.draftItems.filter(x => x.itemId !== i.itemId);
       renderDraft();
@@ -378,8 +385,17 @@ function renderDraft() {
     c.append(info, lab, del);
     root.appendChild(c);
   });
+}
 
-  setText('total-badge', `品項 ${S.draftItems.length}｜總數 ${total}`);
+function renderDraft() {
+  updateSubmitHint();
+  renderDraftRoot($('draft-list'));
+  renderDraftRoot($('workspace-item-list'));
+
+  const total = S.draftItems.reduce((sum, item) => sum + item.qty, 0);
+  const summary = `品項 ${S.draftItems.length}｜總數 ${total}`;
+  setText('total-badge', summary);
+  setText('workspace-summary', summary);
 }
 
 function renderChoices() {
@@ -616,6 +632,75 @@ function renderHistoryDetail(d) {
  * - MWE：啟動相機後連按「切換鏡頭」只會序列化執行 stop -> start(nextCameraId)，不會產生多個 scanner instance。
  * - 致命錯誤邊界：已用 cameraBusy 作為前端互斥鎖防止 Race Condition；單執行緒 async interleave 風險受控。
  */
+/**
+ * - 核心理由：集中管理全螢幕品項輸入層與背景/相機生命週期。
+ * - 權責邊界：[負責]模式切換、捲動凍結/還原、相機離場清理 [不負責]品項解析與送單。
+ * - MWE：openItemWorkspace('scan') 開啟並啟動；setWorkspaceMode('manual') 停止；closeItemWorkspace() 還原。
+ * - 致命錯誤邊界：等待既有相機操作結束後強制停止，避免殘留串流；風險受控。
+ */
+function freezeBackground() {
+  S.workspaceScrollY = window.scrollY || 0;
+  document.body.style.top = `-${S.workspaceScrollY}px`;
+  document.body.classList.add('workspace-open');
+}
+
+function restoreBackground() {
+  document.body.classList.remove('workspace-open');
+  document.body.style.top = '';
+  window.scrollTo(0, S.workspaceScrollY);
+}
+
+async function waitForCameraIdle() {
+  for (let i = 0; i < 40 && S.cameraBusy; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
+
+async function setWorkspaceMode(mode) {
+  if (!S.workspaceOpen) return;
+  const scan = mode === 'scan';
+  S.workspaceMode = scan ? 'scan' : 'manual';
+  $('workspace-scan-mode')?.classList.toggle('hidden', !scan);
+  $('workspace-manual-mode')?.classList.toggle('hidden', scan);
+  $('btn-workspace-scan')?.setAttribute('aria-selected', String(scan));
+  $('btn-workspace-manual')?.setAttribute('aria-selected', String(!scan));
+
+  if (scan) {
+    await startScanner();
+  } else {
+    await waitForCameraIdle();
+    await stopScanner();
+    $('workspace-manual-query')?.focus({ preventScroll: true });
+  }
+}
+
+async function openItemWorkspace(mode, trigger) {
+  if (S.workspaceOpen) return;
+  S.workspaceOpen = true;
+  S.workspaceTrigger = trigger || document.activeElement;
+  freezeBackground();
+  $('item-workspace')?.classList.remove('hidden');
+  renderDraft();
+  await setWorkspaceMode(mode === 'manual' ? 'manual' : 'scan');
+}
+
+async function closeItemWorkspace() {
+  if (!S.workspaceOpen) return;
+  S.workspaceOpen = false;
+  await waitForCameraIdle();
+  S.cameraBusy = true;
+  try {
+    await stopScannerInternal();
+    setStatus('scanner-status', '相機已關閉', 'warn');
+  } finally {
+    S.cameraBusy = false;
+    setCameraButtons();
+  }
+  $('item-workspace')?.classList.add('hidden');
+  restoreBackground();
+  S.workspaceTrigger?.focus?.({ preventScroll: true });
+}
+
 async function detectCameras() {
   try {
     const cams = await Html5Qrcode.getCameras();
@@ -642,14 +727,18 @@ function setCameraButtons() {
   const startBtn = $('btn-start');
   const stopBtn = $('btn-stop');
   const switchBtn = $('btn-switch-camera');
+  const workspaceStart = $('btn-workspace-camera-start');
+  const workspaceSwitch = $('btn-workspace-camera-switch');
 
   if (startBtn) startBtn.disabled = busy || active;
   if (stopBtn) stopBtn.disabled = busy || !active;
+  if (workspaceStart) workspaceStart.disabled = busy || active;
 
-  if (switchBtn) {
-    switchBtn.disabled = busy || !active;
-    switchBtn.textContent = busy ? '切換中...' : '切換鏡頭';
-  }
+  [switchBtn, workspaceSwitch].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = busy || !active;
+    btn.textContent = busy ? '切換中...' : '切換鏡頭';
+  });
 }
 
 function pickInitialCameraIndex(cams) {
@@ -914,9 +1003,20 @@ function bind() {
     renderDraft();
   });
 
-  saferBind('btn-start', 'onclick', startScanner);
+  saferBind('btn-start', 'onclick', (e) => openItemWorkspace('scan', e.currentTarget));
   saferBind('btn-stop', 'onclick', stopScanner);
   saferBind('btn-switch-camera', 'onclick', switchCamera);
+  saferBind('btn-open-manual-workspace', 'onclick', (e) => openItemWorkspace('manual', e.currentTarget));
+  saferBind('btn-workspace-close', 'onclick', closeItemWorkspace);
+  saferBind('btn-workspace-done', 'onclick', closeItemWorkspace);
+  saferBind('btn-workspace-done-bottom', 'onclick', closeItemWorkspace);
+  saferBind('btn-workspace-scan', 'onclick', () => setWorkspaceMode('scan'));
+  saferBind('btn-workspace-manual', 'onclick', () => setWorkspaceMode('manual'));
+  saferBind('btn-workspace-camera-start', 'onclick', startScanner);
+  saferBind('btn-workspace-camera-switch', 'onclick', switchCamera);
+  saferBind('btn-workspace-add', 'onclick', () => {
+    handleInput($('workspace-manual-query')?.value, $('workspace-manual-qty')?.value, 'manual');
+  });
 
   saferBind('btn-close-picker', 'onclick', () => {
     if ($('picker')) {
@@ -938,6 +1038,21 @@ function bind() {
       }
     };
   }
+
+  if ($('workspace-manual-query')) {
+    $('workspace-manual-query').onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        handleInput(e.currentTarget.value, $('workspace-manual-qty')?.value, 'manual');
+      }
+    };
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && S.workspaceOpen) closeItemWorkspace();
+  });
+  window.addEventListener('pagehide', () => {
+    if (S.scanner) stopScannerInternal();
+  });
 }
 
 function fmt(v) {
