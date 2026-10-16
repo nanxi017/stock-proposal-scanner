@@ -418,7 +418,7 @@
     inset: 0;
     z-index: 50000;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
     background: var(--bg);
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   }
@@ -705,13 +705,12 @@
     </section>
 
     <section class="workspace-items" aria-labelledby="workspace-items-heading">
-      <h3 id="workspace-items-heading">全部已加入品項</h3>
       <div id="workspace-item-list"></div>
     </section>
   </div>
 
   <footer class="workspace-footer">
-    <button id="btn-workspace-done-bottom" type="button" style="width:100%">完成並返回</button>
+
   </footer>
 </div>
 
