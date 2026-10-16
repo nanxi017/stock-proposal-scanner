@@ -289,7 +289,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: 60000;
     background: #0f172a88;
     display: flex;
     align-items: flex-start;
@@ -400,6 +400,112 @@
     color: var(--red);
   }
 
+
+  /*
+  - 核心理由：提供不改動原始提案頁的全螢幕品項輸入工作區。
+  - 權責邊界：[負責]背景凍結、掃描/手動模式與獨立捲動清單 [不負責]商品解析、送單 API。
+  - MWE：開啟 #item-workspace 後 body.workspace-open 凍結；關閉後恢復原捲動位置。
+  - 致命錯誤邊界：相機離場由 app.js 集中清理；風險受控。
+  */
+  body.workspace-open {
+    position: fixed;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .workspace {
+    position: fixed;
+    inset: 0;
+    z-index: 50000;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    background: var(--bg);
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  .workspace.hidden { display: none !important; }
+
+  .workspace-header,
+  .workspace-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .workspace-footer {
+    border-top: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  .workspace-title { min-width: 0; text-align: center; }
+  .workspace-title strong { display: block; font-size: 20px; }
+  .workspace-summary { color: var(--muted); font-size: 14px; font-weight: 800; }
+
+  .workspace-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fff;
+  }
+
+  .workspace-tabs button[aria-selected="false"] { background: #e2e8f0; color: #334155; }
+
+  .workspace-body {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(140px, 1fr);
+    gap: 10px;
+    padding: 0 14px 10px;
+  }
+
+  .workspace-mode {
+    min-height: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #fff;
+  }
+
+  .workspace-mode.hidden { display: none !important; }
+  .workspace .reader-wrap { display: block; margin-top: 0; height: min(34vh, 300px) !important; max-height: 300px !important; }
+  .workspace #reader, .workspace #reader video { height: min(34vh, 300px) !important; max-height: 300px !important; }
+  .workspace-camera-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .workspace-camera-actions button { flex: 1; }
+
+  .workspace-manual-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px auto;
+    gap: 8px;
+    align-items: end;
+  }
+
+  .workspace-items {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 2px 14px;
+  }
+
+  .workspace-items h3 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 2px; background: var(--bg); }
+  .workspace .item-card { grid-template-columns: minmax(0, 1fr) 100px auto; }
+  #btn-open-manual-workspace { margin-top: 10px; }
+
+  @media (max-width: 640px) {
+    .workspace-header { padding: 8px 10px; }
+    .workspace-header button { width: auto; font-size: 16px; padding: 8px 10px; }
+    .workspace-body { padding: 0 10px 8px; }
+    .workspace-manual-grid { grid-template-columns: 1fr 84px; }
+    .workspace-manual-grid button { grid-column: 1 / -1; width: 100%; }
+    .workspace .item-card { grid-template-columns: minmax(0, 1fr) 90px; }
+    .workspace .item-card .danger { grid-column: 1 / -1; width: 100%; }
+  }
+
   @media (max-width: 640px) {
     main {
       padding: 10px;
@@ -491,10 +597,6 @@
         <button id="btn-switch-camera" type="button" class="ghost" disabled>切換鏡頭</button>
       </div>
 
-      <div id="reader-wrap" class="reader-wrap">
-        <div id="reader"></div>
-      </div>
-
       <div class="scanner-result">
         <div class="muted">掃描狀態</div>
         <div id="scanner-status" class="status warn">相機尚未啟動</div>
@@ -520,11 +622,12 @@
 
       <div class="muted" style="margin-top:10px">手動狀態</div>
       <p id="manual-status" class="status"></p>
+      <button id="btn-open-manual-workspace" type="button" class="ghost">開啟全螢幕手動加入</button>
     </section>
 
     <section class="panel">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-        <h2 style="margin:0">草稿品項</h2>
+        <h2 style="margin:0">已加入品項</h2>
         <span id="total-badge" class="badge">品項 0｜總數 0</span>
       </div>
 
@@ -534,7 +637,7 @@
 
       <div class="button-row">
         <button id="btn-submit" type="button">送出提案</button>
-        <button id="btn-clear" type="button" class="secondary">清空草稿</button>
+        <button id="btn-clear" type="button" class="secondary">清空品項</button>
       </div>
 
       <p id="submit-status" class="status"></p>
@@ -562,12 +665,60 @@
   </section>
 </main>
 
+<div id="item-workspace" class="workspace hidden" role="dialog" aria-modal="true" aria-labelledby="workspace-heading">
+  <header class="workspace-header">
+    <button id="btn-workspace-close" type="button" class="secondary" aria-label="關閉品項輸入">返回</button>
+    <div class="workspace-title">
+      <strong id="workspace-heading">加入品項</strong>
+      <span id="workspace-summary" class="workspace-summary">品項 0｜總數 0</span>
+    </div>
+    <button id="btn-workspace-done" type="button">完成並返回</button>
+  </header>
+
+  <nav class="workspace-tabs" aria-label="品項輸入模式">
+    <button id="btn-workspace-scan" type="button" aria-selected="true">掃描 QR Code</button>
+    <button id="btn-workspace-manual" type="button" aria-selected="false">手動輸入</button>
+  </nav>
+
+  <div class="workspace-body">
+    <section id="workspace-scan-mode" class="workspace-mode" aria-label="掃描模式">
+      <div id="reader-wrap" class="reader-wrap"><div id="reader"></div></div>
+      <div class="workspace-camera-actions">
+        <button id="btn-workspace-camera-start" type="button">啟動相機</button>
+        <button id="btn-workspace-camera-switch" type="button" class="ghost" disabled>切換鏡頭</button>
+      </div>
+      <div class="scanner-result">
+        <div class="muted">掃描狀態</div>
+        <div id="workspace-scanner-status" class="status warn">相機尚未啟動</div>
+      </div>
+    </section>
+
+    <section id="workspace-manual-mode" class="workspace-mode hidden" aria-label="手動輸入模式">
+      <div class="workspace-manual-grid">
+        <label>條碼 / 品名 / 品項ID<input id="workspace-manual-query" type="search" placeholder="輸入條碼或品名關鍵字"></label>
+        <label>數量<input id="workspace-manual-qty" type="number" min="1" value="1"></label>
+        <button id="btn-workspace-add" type="button">查詢 / 加入</button>
+      </div>
+      <p id="workspace-manual-status" class="status"></p>
+    </section>
+
+    <section class="workspace-items" aria-labelledby="workspace-items-heading">
+      <h3 id="workspace-items-heading">全部已加入品項</h3>
+      <div id="workspace-item-list"></div>
+    </section>
+  </div>
+
+  <footer class="workspace-footer">
+    <button id="btn-workspace-done-bottom" type="button" style="width:100%">完成並返回</button>
+  </footer>
+</div>
+
 <div id="picker" class="modal-backdrop hidden">
   <section class="modal-panel">
     <div class="modal-header">
       <div>
         <h2 style="margin:0">選擇品項</h2>
-        <p class="muted" style="margin:4px 0 0">找到多筆，請點選一筆加入草稿。</p>
+        <p class="muted" style="margin:4px 0 0">找到多筆，請點選一筆加入本次提案。</p>
       </div>
       <button id="btn-close-picker" type="button" class="ghost">關閉</button>
     </div>
